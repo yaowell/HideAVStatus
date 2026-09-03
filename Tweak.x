@@ -1,14 +1,37 @@
 #import <UIKit/UIKit.h>
 
-// 1. 显式声明接口，彻底解决 property 'view' cannot be found 编译错误
-@interface CCUIAVControlsViewController : UIViewController
+// 1. 声明底层私有模块接口
+@interface CCUIModuleIdentifier : NSObject
+@property (nonatomic, copy, readonly) NSString *identifier;
 @end
 
 @interface CCUIOverlayStatusBarViewController : UIViewController
 - (id)controlsView;
 @end
 
-// 2. 拦截 Sensor 数据源：让系统以为没有任何 App 在使用麦克风/摄像头
+// 2.【源头截断】拦截控制中心模块加载，屏蔽 AV/Mic/Video 相关模块
+%hook CCUIModuleRepository
+
+- (id)_loadAllModuleMetadata {
+    NSArray *modules = %orig;
+    NSMutableArray *filteredModules = [NSMutableArray array];
+    
+    for (id module in modules) {
+        NSString *moduleDescription = [module description];
+        // 过滤掉所有包含 AVControls、MicMode、VideoEffects 的模块
+        if (![moduleDescription containsString:@"AVControls"] && 
+            ![moduleDescription containsString:@"MicMode"] && 
+            ![moduleDescription containsString:@"VideoEffects"] &&
+            ![moduleDescription containsString:@"ControlCenterUI.AV"]) {
+            [filteredModules addObject:module];
+        }
+    }
+    return filteredModules;
+}
+
+%end
+
+// 3.【数据屏蔽】强制让系统以为 Sensor（麦克风/相机）状态未激活
 %hook CCUIStatusSensorActivityData
 
 - (BOOL)isSensorActivityActive {
@@ -17,32 +40,7 @@
 
 %end
 
-// 3. 拦截 AV 控制器：阻止视图加载并强行清空
-%hook CCUIAVControlsViewController
-
-- (void)viewDidLoad {
-    %orig;
-    self.view.hidden = YES;
-    self.view.alpha = 0.0;
-    [self.view removeFromSuperview];
-}
-
-- (void)viewWillAppear:(BOOL)animated {
-    %orig;
-    self.view.hidden = YES;
-    if (self.view.superview) {
-        [self.view removeFromSuperview];
-    }
-}
-
-- (CGSize)preferredContentSize {
-    // 强制把模块所需尺寸设为零，防止占位
-    return CGSizeZero;
-}
-
-%end
-
-// 4. 拦截控制中心顶部栏：隐藏容器
+// 4.【UI 强制置空】防止残留视图渲染
 %hook CCUIOverlayStatusBarViewController
 
 - (void)viewWillLayoutSubviews {
@@ -52,8 +50,27 @@
         if (controlsView) {
             controlsView.hidden = YES;
             controlsView.alpha = 0.0;
+            controlsView.frame = CGRectZero;
         }
     }
+}
+
+%end
+
+// 5.【兜底隐藏】拦截所有可能弹出的 AV 视图容器
+%hook UIView
+
+- (void)setFrame:(CGRect)frame {
+    NSString *className = NSStringFromClass([self class]);
+    if ([className containsString:@"CCUIAVControls"] || 
+        [className containsString:@"CCUIMicMode"] || 
+        [className containsString:@"CCUIVideoEffects"]) {
+        self.hidden = YES;
+        self.alpha = 0.0;
+        %orig(CGRectZero);
+        return;
+    }
+    %orig(frame);
 }
 
 %end
