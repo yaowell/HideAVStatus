@@ -1,7 +1,7 @@
 Package: com.yaowell.hideavcontrols
 Name: HideAVControls
 Depends: mobilesubstrate (>= 0.9.5000), firmware (>= 15.0)
-Version: 1.0.0
+Version: 1.0
 Architecture: iphoneos-arm64
 Description: 隐藏控制中心顶部的麦克风模式与视频效果模块 / Hide Microphone Mode and Video Effects in Control Center
 Maintainer: yaowell
