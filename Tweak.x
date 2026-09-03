@@ -1,59 +1,61 @@
 #import <UIKit/UIKit.h>
 
-// 1. 声明私有类接口，防止 Clang 报错
-@interface CCUIModuleIdentifier : NSObject
-@property (nonatomic, copy, readonly) NSString *identifier;
+// 1. 声明底层私有 XPC & 服务端接口
+@interface CCUIControlsServer : NSObject
 @end
 
-@interface CCUIModuleFactory : NSObject
-+ (id)moduleForIdentifier:(CCUIModuleIdentifier *)identifier;
+@interface AVControlsBaseViewController : UIViewController
 @end
 
-@interface CCUIOverlayStatusBarViewController : UIViewController
-- (id)controlsView;
-@end
+// 2.【核心绝杀】：拦截 AV 系统的服务端控制点，直接禁用控制服务
+%hook CCUIControlsServer
 
-// 2.【绝杀一】：在工厂创建模块阶段直接拦截，返回 nil（源头杀，不给建立 UI 的机会）
-%hook CCUIModuleFactory
+- (BOOL)isAVControlsFeatureEnabled {
+    return NO;
+}
 
-+ (id)moduleForIdentifier:(CCUIModuleIdentifier *)identifier {
-    NSString *idStr = [identifier description];
-    if ([idStr containsString:@"AVControls"] || 
-        [idStr containsString:@"MicMode"] || 
-        [idStr containsString:@"VideoEffects"] ||
-        [idStr containsString:@"com.apple.control-center.AVControls"]) {
-        return nil; // 强行返回空，彻底取消该模块创建
-    }
-    return %orig;
+- (id)init {
+    return nil; // 直接拒绝初始化服务端对象
 }
 
 %end
 
-// 3.【绝杀二】：封杀 Sensor 动态广播（欺骗系统没有 App 在用麦克风/相机）
+// 3.【控制器熔断】：拦截所有音视频控制器的基类（从祖先类直接切断）
+%hook AVControlsBaseViewController
+
+- (void)viewDidLoad {
+    // 不调用 %orig，直接不让它加载任何子视图
+    self.view = [[UIView alloc] initWithFrame:CGRectZero];
+    self.view.hidden = YES;
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    self.view.hidden = YES;
+    self.view.frame = CGRectZero;
+}
+
+%end
+
+// 4.【数据伪造】：强制让 SensorKit 广播“没有音频/视频流在运行”
 %hook CCUIStatusSensorActivityData
 
 - (BOOL)isSensorActivityActive {
     return NO;
 }
 
-- (NSUInteger)sensorType {
-    return 0;
-}
-
 %end
 
-// 4.【绝杀三】：强行把顶层动态占位容器的尺寸抹成 0，防止留白
-%hook CCUIOverlayStatusBarViewController
+// 5.【顶层窗口剔除】：如果系统强行生成了顶级 View，在加入 Window 时直接抹杀
+%hook UIView
 
-- (void)viewWillLayoutSubviews {
+- (void)didAddSubview:(UIView *)subview {
     %orig;
-    if ([self respondsToSelector:@selector(controlsView)]) {
-        UIView *controlsView = [self performSelector:@selector(controlsView)];
-        if (controlsView) {
-            controlsView.hidden = YES;
-            controlsView.alpha = 0.0;
-            controlsView.frame = CGRectZero;
-        }
+    NSString *className = NSStringFromClass([subview class]);
+    if ([className containsString:@"AVControls"] || 
+        [className containsString:@"ControlsServer"] ||
+        [className containsString:@"MicMode"]) {
+        subview.hidden = YES;
+        [subview removeFromSuperview];
     }
 }
 
