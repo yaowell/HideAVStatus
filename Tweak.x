@@ -1,5 +1,6 @@
 #import <UIKit/UIKit.h>
 
+// 1. 显式声明私有类，确保编译通过
 @interface RPCCAudioSettingsModuleViewController : UIViewController
 @end
 
@@ -9,43 +10,25 @@
 @interface CCUIContentModuleContainerViewController : UIViewController
 @end
 
-// 1.【iOS 16.2 核心】：直接拦截传感器状态服务，强行返回“无活跃传感器”
-%hook CCUIOverlayStatusServer
-
-- (BOOL)isSensorActivityActive {
-    return NO;
-}
-
-- (id)activeSensorActivityData {
-    return nil;
-}
-
-%end
-
-// 2.【iOS 16.2 控制中心 Header 绝杀】：阻止 Header 进行传感器拉伸
+// 2.【核心高度锁定】：强行将 HeaderPocket 的展开状态锁死为 NO
+// 阻止控制中心顶部触发 Sensor 展开动画，直接固定在原生默认高度
 %hook CCUIHeaderPocketView
-
-- (void)setSensorAttributionExpanded:(BOOL)expanded {
-    %orig(NO); // 强制不拉伸
-}
 
 - (BOOL)isSensorAttributionExpanded {
     return NO;
 }
 
-- (void)layoutSubviews {
-    %orig;
-    // 强行把顶部 Pocket 视图高度锁死为 0
-    CGRect frame = self.frame;
-    if (frame.size.height > 0) {
-        frame.size.height = 0;
-        self.frame = frame;
-    }
+- (void)setSensorAttributionExpanded:(BOOL)expanded {
+    %orig(NO);
+}
+
+- (void)setSensorAttributionExpanded:(BOOL)expanded animated:(BOOL)animated {
+    %orig(NO, NO);
 }
 
 %end
 
-// 3.【物理消除音视频模块】：隐藏 View 并强行归零尺寸
+// 3.【麦克风模块压扁】：隐藏 View 并将尺寸归零
 %hook RPCCAudioSettingsModuleViewController
 
 - (CGSize)preferredContentSize {
@@ -54,13 +37,16 @@
 
 - (void)viewDidLoad {
     %orig;
-    self.view.hidden = YES;
-    self.view.frame = CGRectZero;
-    [self.view removeFromSuperview];
+    UIViewController *vc = (UIViewController *)self;
+    vc.view.hidden = YES;
+    vc.view.alpha = 0.0;
+    vc.view.frame = CGRectZero;
+    [vc.view removeFromSuperview];
 }
 
 %end
 
+// 4.【视频效果模块压扁】：隐藏 View 并将尺寸归零
 %hook RPCCVideoSettingsModuleViewController
 
 - (CGSize)preferredContentSize {
@@ -69,14 +55,16 @@
 
 - (void)viewDidLoad {
     %orig;
-    self.view.hidden = YES;
-    self.view.frame = CGRectZero;
-    [self.view removeFromSuperview];
+    UIViewController *vc = (UIViewController *)self;
+    vc.view.hidden = YES;
+    vc.view.alpha = 0.0;
+    vc.view.frame = CGRectZero;
+    [vc.view removeFromSuperview];
 }
 
 %end
 
-// 4.【容器层压扁】：不给 GridEngine 任何计算空间
+// 5.【外层容器塌陷】：让网格布局引擎（GridEngine）拿不到任何占用尺寸
 %hook CCUIContentModuleContainerViewController
 
 - (CGSize)preferredContentSize {
