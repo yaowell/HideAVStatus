@@ -21,7 +21,6 @@ jobs:
         with:
           submodules: recursive
 
-      # 1. 原生安装 Theos 和 SDK 并显式导出环境变量
       - name: Install Theos and SDKs
         run: |
           sudo apt-get update
@@ -30,41 +29,31 @@ jobs:
           curl -LO https://github.com/theos/sdks/archive/master.zip
           unzip master.zip
           mv sdks-master/* $HOME/theos/sdks/
-          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
 
-      # 2. 编译无根 (Rootless) 版本 (显式传入 THEOS 路径)
       - name: Build Rootless Package
         run: |
-          export THEOS=$HOME/theos
-          make clean package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+          THEOS=$HOME/theos make clean package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
           mkdir -p output/rootless
           mv packages/*.deb output/rootless/
 
-      # 3. 编译隐根 (Roothide) 版本
       - name: Build Roothide Package
         run: |
-          export THEOS=$HOME/theos
-          make clean package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide || true
+          THEOS=$HOME/theos make clean package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide || true
           mkdir -p output/roothide
           if ls packages/*.deb 1> /dev/null 2>&1; then
             mv packages/*.deb output/roothide/
           else
-            echo "Roothide scheme not directly supported by standard Theos, copy rootless deb"
             cp output/rootless/*.deb output/roothide/
           fi
 
-      # 4. 上传无根包产物
       - name: Upload Rootless Artifact
         uses: actions/upload-artifact@v4
         with:
           name: HideAVControls-Rootless-deb
           path: output/rootless/*.deb
-          if-no-files-found: error
 
-      # 5. 上传隐根包产物
       - name: Upload Roothide Artifact
         uses: actions/upload-artifact@v4
         with:
           name: HideAVControls-Roothide-deb
           path: output/roothide/*.deb
-          if-no-files-found: error
