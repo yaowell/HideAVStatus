@@ -6,48 +6,88 @@
 @interface RPCCVideoSettingsModuleViewController : UIViewController
 @end
 
-// 1.【绝杀 Sensor 状态源头】抹掉所有麦克风/相机活跃属性
-// 没有 activeSensor，系统完全不会去加载音视频卡片，面板高度直接保持默认！
-%hook CCUISensorAttributionStore
+@interface CCUIContentModuleContainerViewController : UIViewController
+@end
 
-- (id)activeSensorAttributionData {
-    return nil;
+// 1.【iOS 16.2 核心】：直接拦截传感器状态服务，强行返回“无活跃传感器”
+%hook CCUIOverlayStatusServer
+
+- (BOOL)isSensorActivityActive {
+    return NO;
 }
 
-- (NSArray *)sensorAttributions {
-    return @[];
+- (id)activeSensorActivityData {
+    return nil;
 }
 
 %end
 
-// 2.【绝杀状态栏/Header 展开逻辑】强制 HeaderPocket 永远处于非 Sensor 激活状态
+// 2.【iOS 16.2 控制中心 Header 绝杀】：阻止 Header 进行传感器拉伸
 %hook CCUIHeaderPocketView
 
-- (BOOL)isSensorAttributionCompact {
-    return YES;
+- (void)setSensorAttributionExpanded:(BOOL)expanded {
+    %orig(NO); // 强制不拉伸
 }
 
 - (BOOL)isSensorAttributionExpanded {
     return NO;
 }
 
+- (void)layoutSubviews {
+    %orig;
+    // 强行把顶部 Pocket 视图高度锁死为 0
+    CGRect frame = self.frame;
+    if (frame.size.height > 0) {
+        frame.size.height = 0;
+        self.frame = frame;
+    }
+}
+
 %end
 
-// 3.【模块降级掩护】如果强行加载，直接归零
+// 3.【物理消除音视频模块】：隐藏 View 并强行归零尺寸
 %hook RPCCAudioSettingsModuleViewController
-- (CGSize)preferredContentSize { return CGSizeZero; }
-- (void)loadView {
-    UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
-    v.hidden = YES;
-    self.view = v;
+
+- (CGSize)preferredContentSize {
+    return CGSizeZero;
 }
+
+- (void)viewDidLoad {
+    %orig;
+    self.view.hidden = YES;
+    self.view.frame = CGRectZero;
+    [self.view removeFromSuperview];
+}
+
 %end
 
 %hook RPCCVideoSettingsModuleViewController
-- (CGSize)preferredContentSize { return CGSizeZero; }
-- (void)loadView {
-    UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
-    v.hidden = YES;
-    self.view = v;
+
+- (CGSize)preferredContentSize {
+    return CGSizeZero;
 }
+
+- (void)viewDidLoad {
+    %orig;
+    self.view.hidden = YES;
+    self.view.frame = CGRectZero;
+    [self.view removeFromSuperview];
+}
+
+%end
+
+// 4.【容器层压扁】：不给 GridEngine 任何计算空间
+%hook CCUIContentModuleContainerViewController
+
+- (CGSize)preferredContentSize {
+    UIViewController *vc = (UIViewController *)self;
+    if (vc.childViewControllers.count > 0) {
+        NSString *childCls = NSStringFromClass([vc.childViewControllers.firstObject class]);
+        if ([childCls containsString:@"RPCCAudioSettings"] || [childCls containsString:@"RPCCVideoSettings"]) {
+            return CGSizeZero;
+        }
+    }
+    return %orig;
+}
+
 %end
