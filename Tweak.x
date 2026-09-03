@@ -1,46 +1,44 @@
 #import <UIKit/UIKit.h>
 
-// 声明私有接口，避免编译报错
-@interface CCUIOverlayStatusBarViewController : UIViewController
-- (id)controlsView;
-@end
+// 1. Hook 麦克风与视频效果控制器，直接让它们的 View 无法加载或保持隐藏
+%hook CCUIStatusSensorActivityData
 
-// 强制隐藏 View 的通用辅助函数
-static void HideViewCompletely(UIView *view) {
-    if (!view) return;
-    view.hidden = YES;
-    view.alpha = 0.0;
-    view.userInteractionEnabled = NO;
-    // 强制将其尺寸置零，防止占据控制中心顶部的布局空间
-    CGRect frame = view.frame;
-    frame.size.height = 0;
-    view.frame = frame;
-}
-
-// 1. Hook 顶部状态栏控制器（持续在布局后刷新隐藏状态）
-%hook CCUIOverlayStatusBarViewController
-
-- (void)viewDidLayoutSubviews {
-    %orig;
-    if ([self respondsToSelector:@selector(controlsView)]) {
-        UIView *controlsView = [self performSelector:@selector(controlsView)];
-        HideViewCompletely(controlsView);
-    }
+- (BOOL)isSensorActivityActive {
+    return NO;
 }
 
 %end
 
-// 2. Hook 模块容器布局（直接匹配 AV / VideoEffects / MicMode 等模块类名）
-%hook UIView
+// 2. 拦截 AV 控制模块视图（控制中心顶部两个长条）
+%hook CCUIAVControlsViewController
 
-- (void)layoutSubviews {
+- (void)viewDidLoad {
     %orig;
-    NSString *className = NSStringFromClass([self class]);
-    if ([className containsString:@"AVControls"] || 
-        [className containsString:@"VideoEffects"] || 
-        [className containsString:@"MicMode"] ||
-        [className containsString:@"CCUIControlsServerOriginControl"]) {
-        HideViewCompletely(self);
+    self.view.hidden = YES;
+    self.view.alpha = 0.0;
+    [self.view removeFromSuperview];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    %orig;
+    self.view.hidden = YES;
+    [self.view removeFromSuperview];
+}
+
+%end
+
+// 3. 拦截控制中心顶部的 Sensor 状态容器
+%hook CCUIOverlayStatusBarViewController
+
+- (void)viewWillLayoutSubviews {
+    %orig;
+    if ([self respondsToSelector:@selector(controlsView)]) {
+        UIView *controlsView = [self performSelector:@selector(controlsView)];
+        if (controlsView) {
+            controlsView.hidden = YES;
+            controlsView.alpha = 0.0;
+            [controlsView removeFromSuperview];
+        }
     }
 }
 
