@@ -1,36 +1,35 @@
 #import <UIKit/UIKit.h>
 
-// 1. 声明私有接口，避免编译报错
-@interface CCUIAVControlsViewController : UIViewController
-- (BOOL)_canShow;
-- (BOOL)hasContent;
+// 1. 声明私有类接口，防止 Clang 报错
+@interface CCUIModuleIdentifier : NSObject
+@property (nonatomic, copy, readonly) NSString *identifier;
+@end
+
+@interface CCUIModuleFactory : NSObject
++ (id)moduleForIdentifier:(CCUIModuleIdentifier *)identifier;
 @end
 
 @interface CCUIOverlayStatusBarViewController : UIViewController
 - (id)controlsView;
 @end
 
-// 2.【逻辑截断】拦截系统 AV 控制器，直接告诉系统“不需要显示”且“没有内容”
-%hook CCUIAVControlsViewController
+// 2.【绝杀一】：在工厂创建模块阶段直接拦截，返回 nil（源头杀，不给建立 UI 的机会）
+%hook CCUIModuleFactory
 
-- (BOOL)_canShow {
-    return NO;
-}
-
-- (BOOL)hasContent {
-    return NO;
-}
-
-- (void)viewDidLoad {
-    %orig;
-    self.view.hidden = YES;
-    self.view.alpha = 0.0;
-    [self.view removeFromSuperview];
++ (id)moduleForIdentifier:(CCUIModuleIdentifier *)identifier {
+    NSString *idStr = [identifier description];
+    if ([idStr containsString:@"AVControls"] || 
+        [idStr containsString:@"MicMode"] || 
+        [idStr containsString:@"VideoEffects"] ||
+        [idStr containsString:@"com.apple.control-center.AVControls"]) {
+        return nil; // 强行返回空，彻底取消该模块创建
+    }
+    return %orig;
 }
 
 %end
 
-// 3.【数据截断】拦截 Sensor 数据源，伪造状态为未激活
+// 3.【绝杀二】：封杀 Sensor 动态广播（欺骗系统没有 App 在用麦克风/相机）
 %hook CCUIStatusSensorActivityData
 
 - (BOOL)isSensorActivityActive {
@@ -43,7 +42,7 @@
 
 %end
 
-// 4.【容器剥离】拦截顶层 StatusBar 容器
+// 4.【绝杀三】：强行把顶层动态占位容器的尺寸抹成 0，防止留白
 %hook CCUIOverlayStatusBarViewController
 
 - (void)viewWillLayoutSubviews {
@@ -54,26 +53,7 @@
             controlsView.hidden = YES;
             controlsView.alpha = 0.0;
             controlsView.frame = CGRectZero;
-            [controlsView removeFromSuperview];
         }
-    }
-}
-
-%end
-
-// 5.【兜底隐藏】拦截一切相关的子视图渲染
-%hook UIView
-
-- (void)layoutSubviews {
-    %orig;
-    NSString *className = NSStringFromClass([self class]);
-    if ([className containsString:@"AVControls"] || 
-        [className containsString:@"MicMode"] || 
-        [className containsString:@"VideoEffects"] ||
-        [className containsString:@"ControlsServerOrigin"]) {
-        self.hidden = YES;
-        self.alpha = 0.0;
-        self.frame = CGRectZero;
     }
 }
 
