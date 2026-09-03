@@ -1,48 +1,46 @@
 #import <UIKit/UIKit.h>
 
-@interface RPCCAudioSettingsModuleViewController : UIViewController
-@end
+// 1.【源头屏蔽 1】：阻断传感器状态存储中心的数据输出
+// 让控制中心查询 activeSensors 时永远返回空，彻底认为当前无麦克风/相机占用
+%hook CCUISensorAttributionStore
 
-@interface RPCCVideoSettingsModuleViewController : UIViewController
-@end
-
-// 1. 精准干掉麦克风模块：视图加不进来，尺寸置零
-%hook RPCCAudioSettingsModuleViewController
-
-- (CGSize)preferredContentSize {
-    return CGSizeZero;
+- (id)activeSensorAttributionData {
+    return nil;
 }
 
-- (void)viewWillLayoutSubviews {
-    %orig;
-    self.view.hidden = YES;
-    self.view.alpha = 0.0;
-    self.view.frame = CGRectZero;
+- (NSArray *)sensorAttributions {
+    return @[];
+}
+
+- (BOOL)hasActiveSensorAttribution {
+    return NO;
 }
 
 %end
 
-// 2. 精准干掉视频效果模块：视图加不进来，尺寸置零
-%hook RPCCVideoSettingsModuleViewController
+// 2.【源头屏蔽 2】：拦截状态栏管理器的传感器数据更新
+%hook CCUIStatusLabelViewController
 
-- (CGSize)preferredContentSize {
-    return CGSizeZero;
-}
-
-- (void)viewWillLayoutSubviews {
-    %orig;
-    self.view.hidden = YES;
-    self.view.alpha = 0.0;
-    self.view.frame = CGRectZero;
+- (void)setSensorAttributionData:(id)data {
+    // 强制不接受传感器属性更新
+    %orig(nil);
 }
 
 %end
 
-// 3. 拦截顶层 Pocket 展开动画，防止整块面板下移
+// 3.【源头屏蔽 3】：拦截 Dynamic Engine 的状态判断
 %hook CCUIHeaderPocketView
 
-- (void)setSensorAttributionExpanded:(BOOL)expanded animated:(BOOL)animated {
-    %orig(NO, NO);
+- (BOOL)isSensorAttributionActive {
+    return NO;
+}
+
+- (BOOL)isSensorAttributionExpanded {
+    return NO;
+}
+
+- (void)setSensorAttributionExpanded:(BOOL)expanded {
+    %orig(NO);
 }
 
 %end
