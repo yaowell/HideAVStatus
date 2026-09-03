@@ -21,10 +21,9 @@ jobs:
         with:
           submodules: recursive
 
+      # 使用经过验证且稳定的 Theos 环境配置
       - name: Setup Theos
-        uses: internalizing/setup-theos-action@v1
-        with:
-          theos-sdks: 'iOS'
+        uses: theos/setup-theos-action@v1
 
       - name: Build Rootless Package
         run: |
