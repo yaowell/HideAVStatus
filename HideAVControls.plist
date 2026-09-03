@@ -10,6 +10,7 @@
 			<string>com.apple.ControlCenter</string>
 			<string>com.apple.ControlCenterUI</string>
 			<string>com.apple.ReplayKit</string>
+			<string>com.apple.control-center.AudioSettingsModule</string>
 		</array>
 	</dict>
 </dict>
