@@ -1,69 +1,49 @@
-name: Build Rootless & Roothide Tweaks
+name: Build Dual Debs (Roothide & Rootless)
 
 on:
   push:
     branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      # 安装 Theos、SDKs 以及核心的 Linux 交叉编译工具链 (Toolchain)
-      - name: Install Theos, SDKs, and Toolchain
+      - name: Install Dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang make perl libssl-dev unzip wget
-          
-          # 1. 克隆 Theos 主程序
-          git clone --recursive https://github.com/theos/theos.git $HOME/theos
-          
-          # 2. 下载 iOS SDKs
-          curl -LO https://github.com/theos/sdks/archive/master.zip
-          unzip master.zip
-          mv sdks-master/* $HOME/theos/sdks/
-          
-          # 3. 下载 Linux 版 iOS 交叉编译器 (Toolchain)
-          mkdir -p $HOME/theos/toolchain/linux/iphone
-          curl -LO https://github.com/kabiroberai/theos-toolchain-script/releases/download/v1.0.0/toolchain-linux-x86_64.tar.gz
-          tar -xzf toolchain-linux-x86_64.tar.gz -C $HOME/theos/toolchain/linux/iphone/
+          brew install ldid
 
-      - name: Build Rootless Package
+      - name: Clone Roothide Theos and SDKs
         run: |
-          THEOS=$HOME/theos make clean package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
-          mkdir -p output/rootless
-          mv packages/*.deb output/rootless/
+          git clone --recursive https://github.com/roothide/theos.git $HOME/theos
+          rm -rf $HOME/theos/sdks
+          git clone --depth=1 https://github.com/theos/sdks.git $HOME/theos/sdks
+          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+
+      - name: Fix Private Frameworks
+        run: |
+          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          if [ -d "$SDK_PATH/System/Library/PrivateFrameworks/Preferences.framework" ]; then
+            mkdir -p $HOME/theos/sdks/iPhoneOS16.5.sdk/System/Library/PrivateFrameworks
+            cp -R "$SDK_PATH/System/Library/PrivateFrameworks/Preferences.framework" $HOME/theos/sdks/iPhoneOS16.5.sdk/System/Library/PrivateFrameworks/ || true
+          fi
 
       - name: Build Roothide Package
         run: |
-          THEOS=$HOME/theos make clean package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide || true
-          mkdir -p output/roothide
-          if ls packages/*.deb 1> /dev/null 2>&1; then
-            mv packages/*.deb output/roothide/
-          else
-            cp output/rootless/*.deb output/roothide/
-          fi
+          make clean package THEOS_PACKAGE_SCHEME=roothide SYSROOT=$HOME/theos/sdks/iPhoneOS16.5.sdk FINALPACKAGE=1
 
-      - name: Upload Rootless Artifact
+      - name: Build Rootless Package
+        run: |
+          make clean package THEOS_PACKAGE_SCHEME=rootless SYSROOT=$HOME/theos/sdks/iPhoneOS16.5.sdk FINALPACKAGE=1
+
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: HideAVControls-Rootless-deb
-          path: output/rootless/*.deb
-
-      - name: Upload Roothide Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: HideAVControls-Roothide-deb
-          path: output/roothide/*.deb
+          name: HideAVControls-1.0-Debs
+          path: packages/*.deb
