@@ -1,6 +1,6 @@
 #import <UIKit/UIKit.h>
 
-// 1. 声明私有类
+// 1. 声明控制器与网格/布局私有接口
 @interface RPCCAudioSettingsModuleViewController : UIViewController
 @end
 
@@ -10,67 +10,45 @@
 @interface CCUIContentModuleContainerViewController : UIViewController
 @end
 
-// 2.【绝杀防崩】：直接让 Header View 认定 Sensor 处于非展开/非激活状态
-// 这样控制中心就不会触发顶部的推顶/下移逻辑，直接维持原生默认高度！
-%hook CCUIHeaderPocketView
+// 2.【绝杀源头】：拦截控制中心模块列表的获取，直接把这两个模块从数组里彻底删掉！
+// 列表里没有它们，网格引擎（GridEngine）就不会为它们预留顶部的 Grid 行数！
+%hook CCUIModuleCollectionViewController
 
-- (BOOL)isSensorAttributionExpanded {
-    return NO;
-}
-
-- (void)setSensorAttributionExpanded:(BOOL)expanded {
-    %orig(NO); // 强制传 NO
-}
-
-%end
-
-// 3.【模块物理压扁】：将音视频两个 View 的内容隐藏，尺寸设为 Zero
-%hook RPCCAudioSettingsModuleViewController
-
-- (CGSize)preferredContentSize {
-    return CGSizeZero;
-}
-
-- (void)loadView {
-    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
-    emptyView.hidden = YES;
-    self.view = emptyView;
-}
-
-- (void)viewDidLoad {
-    %orig;
-    UIViewController *vc = (UIViewController *)self;
-    vc.view.hidden = YES;
-    vc.view.frame = CGRectZero;
-    [vc.view removeFromSuperview];
+- (NSArray *)moduleViewControllers {
+    NSArray *origVCs = %orig;
+    NSMutableArray *filteredVCs = [NSMutableArray array];
+    
+    for (UIViewController *vc in origVCs) {
+        NSString *clsName = NSStringFromClass([vc class]);
+        // 如果容器里装的是音视频模块，直接过滤丢弃
+        if ([clsName containsString:@"CCUIContentModuleContainerViewController"]) {
+            UIViewController *childVC = vc.childViewControllers.firstObject;
+            NSString *childCls = NSStringFromClass([childVC class]);
+            if ([childCls containsString:@"RPCCAudioSettings"] || 
+                [childCls containsString:@"RPCCVideoSettings"]) {
+                continue; // 跳过，不加入布局数组
+            }
+        }
+        [filteredVCs addObject:vc];
+    }
+    return filteredVCs;
 }
 
 %end
 
-%hook RPCCVideoSettingsModuleViewController
-
-- (CGSize)preferredContentSize {
-    return CGSizeZero;
-}
-
-- (void)loadView {
-    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
-    emptyView.hidden = YES;
-    self.view = emptyView;
-}
-
-- (void)viewDidLoad {
-    %orig;
-    UIViewController *vc = (UIViewController *)self;
-    vc.view.hidden = YES;
-    vc.view.frame = CGRectZero;
-    [vc.view removeFromSuperview];
-}
-
-%end
-
-// 4.【外层容器屏蔽】
+// 3.【绝杀布局管理器】：如果系统单独查询某个模块的 Frame，强行返回 CGRectZero
 %hook CCUIContentModuleContainerViewController
+
+- (CGRect)compactModeFrame {
+    UIViewController *vc = (UIViewController *)self;
+    if (vc.childViewControllers.count > 0) {
+        NSString *childCls = NSStringFromClass([vc.childViewControllers.firstObject class]);
+        if ([childCls containsString:@"RPCCAudioSettings"] || [childCls containsString:@"RPCCVideoSettings"]) {
+            return CGRectZero;
+        }
+    }
+    return %orig;
+}
 
 - (CGSize)preferredContentSize {
     UIViewController *vc = (UIViewController *)self;
@@ -83,17 +61,15 @@
     return %orig;
 }
 
-- (void)viewWillLayoutSubviews {
-    %orig;
-    UIViewController *vc = (UIViewController *)self;
-    if (vc.childViewControllers.count > 0) {
-        NSString *childCls = NSStringFromClass([vc.childViewControllers.firstObject class]);
-        if ([childCls containsString:@"RPCCAudioSettings"] || [childCls containsString:@"RPCCVideoSettings"]) {
-            vc.view.hidden = YES;
-            vc.view.frame = CGRectZero;
-            [vc.view removeFromSuperview];
-        }
-    }
-}
+%end
 
+// 4.【兜底视图抹杀】
+%hook RPCCAudioSettingsModuleViewController
+- (CGSize)preferredContentSize { return CGSizeZero; }
+- (void)loadView { self.view = [[UIView alloc] initWithFrame:CGRectZero]; self.view.hidden = YES; }
+%end
+
+%hook RPCCVideoSettingsModuleViewController
+- (CGSize)preferredContentSize { return CGSizeZero; }
+- (void)loadView { self.view = [[UIView alloc] initWithFrame:CGRectZero]; self.view.hidden = YES; }
 %end
