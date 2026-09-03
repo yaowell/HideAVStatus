@@ -9,7 +9,7 @@
 			<string>com.apple.springboard</string>
 			<string>com.apple.ControlCenter</string>
 			<string>com.apple.ControlCenterUI</string>
-			<string>com.apple.audio.AudioServer</string>
+			<string>com.apple.ReplayKit</string>
 		</array>
 	</dict>
 </dict>
