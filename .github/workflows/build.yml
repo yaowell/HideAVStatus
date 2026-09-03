@@ -1,39 +1,51 @@
-#import <UIKit/UIKit.h>
+name: Build Dual Debs (Roothide & Rootless)
 
-// 声明私有类接口，告诉编译器继承关系以解决 forward declaration 报错
-@interface CCUIOverlayStatusBarViewController : UIViewController
-- (id)controlsView;
-@end
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
 
-@interface CCUIModuleCollectionView : UIView
-@end
+jobs:
+  build:
+    runs-on: macos-latest
 
-%hook CCUIOverlayStatusBarViewController
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-- (void)viewDidLoad {
-    %orig;
-    if ([self respondsToSelector:@selector(controlsView)]) {
-        UIView *controlsView = [self performSelector:@selector(controlsView)];
-        controlsView.hidden = YES;
-        controlsView.alpha = 0.0;
-    }
-}
+      - name: Install Dependencies
+        run: |
+          brew install ldid
 
-%end
+      - name: Clone Roothide Theos and SDKs
+        run: |
+          git clone --recursive https://github.com/roothide/theos.git $HOME/theos
+          rm -rf $HOME/theos/sdks
+          git clone --depth=1 https://github.com/theos/sdks.git $HOME/theos/sdks
+          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
 
-%hook CCUIModuleCollectionView
+      - name: Fix Private Frameworks
+        run: |
+          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          if [ -d "$SDK_PATH/System/Library/PrivateFrameworks/Preferences.framework" ]; then
+            mkdir -p $HOME/theos/sdks/iPhoneOS16.5.sdk/System/Library/PrivateFrameworks
+            cp -R "$SDK_PATH/System/Library/PrivateFrameworks/Preferences.framework" $HOME/theos/sdks/iPhoneOS16.5.sdk/System/Library/PrivateFrameworks/ || true
+          fi
 
-- (void)layoutSubviews {
-    %orig;
-    for (UIView *subview in self.subviews) {
-        NSString *className = NSStringFromClass([subview class]);
-        if ([className containsString:@"AVControls"] || 
-            [className containsString:@"VideoEffects"] || 
-            [className containsString:@"MicMode"]) {
-            subview.hidden = YES;
-            subview.frame = CGRectZero;
-        }
-    }
-}
+      - name: Build Roothide Package
+        run: |
+          make clean package THEOS_PACKAGE_SCHEME=roothide SYSROOT=$HOME/theos/sdks/iPhoneOS16.5.sdk FINALPACKAGE=1
 
-%end
+      - name: Build Rootless Package
+        run: |
+          make clean package THEOS_PACKAGE_SCHEME=rootless SYSROOT=$HOME/theos/sdks/iPhoneOS16.5.sdk FINALPACKAGE=1
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HideAVControls-1.0-Debs
+          path: packages/*.deb
