@@ -1,6 +1,5 @@
 #import <UIKit/UIKit.h>
 
-// 1. 显式声明私有类，确保编译通过
 @interface RPCCAudioSettingsModuleViewController : UIViewController
 @end
 
@@ -10,62 +9,36 @@
 @interface CCUIContentModuleContainerViewController : UIViewController
 @end
 
-// 2.【核心高度锁定】：强行将 HeaderPocket 的展开状态锁死为 NO
-// 阻止控制中心顶部触发 Sensor 展开动画，直接固定在原生默认高度
-%hook CCUIHeaderPocketView
+// 1.【阻止动态挂载】：当系统尝试将音视频模块作为 ChildViewController 重新添加时，直接拦下
+%hook UIViewController
 
-- (BOOL)isSensorAttributionExpanded {
-    return NO;
-}
-
-- (void)setSensorAttributionExpanded:(BOOL)expanded {
-    %orig(NO);
-}
-
-- (void)setSensorAttributionExpanded:(BOOL)expanded animated:(BOOL)animated {
-    %orig(NO, NO);
-}
-
-%end
-
-// 3.【麦克风模块压扁】：隐藏 View 并将尺寸归零
-%hook RPCCAudioSettingsModuleViewController
-
-- (CGSize)preferredContentSize {
-    return CGSizeZero;
-}
-
-- (void)viewDidLoad {
+- (void)addChildViewController:(UIViewController *)childController {
+    NSString *clsName = NSStringFromClass([childController class]);
+    if ([clsName containsString:@"RPCCAudioSettings"] || 
+        [clsName containsString:@"RPCCVideoSettings"]) {
+        // 拒绝对这两个模块进行挂载，直接返回，切断“模块又出来”的链条
+        return;
+    }
     %orig;
-    UIViewController *vc = (UIViewController *)self;
-    vc.view.hidden = YES;
-    vc.view.alpha = 0.0;
-    vc.view.frame = CGRectZero;
-    [vc.view removeFromSuperview];
 }
 
 %end
 
-// 4.【视频效果模块压扁】：隐藏 View 并将尺寸归零
-%hook RPCCVideoSettingsModuleViewController
-
-- (CGSize)preferredContentSize {
-    return CGSizeZero;
-}
-
-- (void)viewDidLoad {
-    %orig;
-    UIViewController *vc = (UIViewController *)self;
-    vc.view.hidden = YES;
-    vc.view.alpha = 0.0;
-    vc.view.frame = CGRectZero;
-    [vc.view removeFromSuperview];
-}
-
-%end
-
-// 5.【外层容器塌陷】：让网格布局引擎（GridEngine）拿不到任何占用尺寸
+// 2.【绝杀网格 Engine】：不给网格引擎分配任何 Frame 和尺寸
 %hook CCUIContentModuleContainerViewController
+
+- (void)viewWillLayoutSubviews {
+    %orig;
+    UIViewController *vc = (UIViewController *)self;
+    if (vc.childViewControllers.count > 0) {
+        NSString *childCls = NSStringFromClass([vc.childViewControllers.firstObject class]);
+        if ([childCls containsString:@"RPCCAudioSettings"] || [childCls containsString:@"RPCCVideoSettings"]) {
+            vc.view.hidden = YES;
+            vc.view.frame = CGRectZero;
+            [vc.view removeFromSuperview];
+        }
+    }
+}
 
 - (CGSize)preferredContentSize {
     UIViewController *vc = (UIViewController *)self;
@@ -78,4 +51,40 @@
     return %orig;
 }
 
+%end
+
+// 3.【绝杀状态拉伸】：阻止 Header 触发高度扩展
+%hook CCUIHeaderPocketView
+
+- (void)setSensorAttributionExpanded:(BOOL)expanded {
+    %orig(NO);
+}
+
+- (void)setSensorAttributionExpanded:(BOOL)expanded animated:(BOOL)animated {
+    %orig(NO, NO);
+}
+
+- (BOOL)isSensorAttributionExpanded {
+    return NO;
+}
+
+%end
+
+// 4.【模块控制器本身防守】
+%hook RPCCAudioSettingsModuleViewController
+- (CGSize)preferredContentSize { return CGSizeZero; }
+- (void)loadView {
+    UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
+    v.hidden = YES;
+    self.view = v;
+}
+%end
+
+%hook RPCCVideoSettingsModuleViewController
+- (CGSize)preferredContentSize { return CGSizeZero; }
+- (void)loadView {
+    UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
+    v.hidden = YES;
+    self.view = v;
+}
 %end
