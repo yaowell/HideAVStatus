@@ -1,34 +1,32 @@
 #import <UIKit/UIKit.h>
 
-// 1.【源头屏蔽 1】：阻断传感器状态存储中心的数据输出
-// 让控制中心查询 activeSensors 时永远返回空，彻底认为当前无麦克风/相机占用
-%hook CCUISensorAttributionStore
+@interface CCUIModuleRepository : NSObject
+@end
 
-- (id)activeSensorAttributionData {
-    return nil;
+// 1.【绝杀模块注册】：在 Repository 扫描/加载模块列表时，直接过滤掉音视频控制模块
+%hook CCUIModuleRepository
+
+- (id)_loadModuleWithIdentifier:(NSString *)identifier {
+    if ([identifier containsString:@"AudioSettings"] || 
+        [identifier containsString:@"VideoSettings"] ||
+        [identifier containsString:@"com.apple.replaykit"]) {
+        return nil; // 强行返回 nil，从系统模块仓库中删除
+    }
+    return %orig;
 }
 
-- (NSArray *)sensorAttributions {
-    return @[];
-}
-
-- (BOOL)hasActiveSensorAttribution {
-    return NO;
+- (BOOL)isModuleSupportedWithIdentifier:(NSString *)identifier {
+    if ([identifier containsString:@"AudioSettings"] || 
+        [identifier containsString:@"VideoSettings"] ||
+        [identifier containsString:@"com.apple.replaykit"]) {
+        return NO; // 告诉系统当前设备/环境不支持该模块
+    }
+    return %orig;
 }
 
 %end
 
-// 2.【源头屏蔽 2】：拦截状态栏管理器的传感器数据更新
-%hook CCUIStatusLabelViewController
-
-- (void)setSensorAttributionData:(id)data {
-    // 强制不接受传感器属性更新
-    %orig(nil);
-}
-
-%end
-
-// 3.【源头屏蔽 3】：拦截 Dynamic Engine 的状态判断
+// 2.【绝杀 UI 布局扩展】：锁定顶部 Header 不产生拉伸
 %hook CCUIHeaderPocketView
 
 - (BOOL)isSensorAttributionActive {
