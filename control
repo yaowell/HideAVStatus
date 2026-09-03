@@ -1,5 +1,5 @@
-Package: com.yaowell.hideavcontrols
-Name: HideAVControls
+Package: com.yaowell.fackavcontrols
+Name: FackAVControls
 Depends: mobilesubstrate (>= 0.9.5000), firmware (>= 15.0)
 Version: 1.0
 Architecture: iphoneos-arm64
