@@ -1,6 +1,14 @@
 #import <UIKit/UIKit.h>
 
-// 1. Hook 麦克风与视频效果控制器，直接让它们的 View 无法加载或保持隐藏
+// 1. 显式声明接口，彻底解决 property 'view' cannot be found 编译错误
+@interface CCUIAVControlsViewController : UIViewController
+@end
+
+@interface CCUIOverlayStatusBarViewController : UIViewController
+- (id)controlsView;
+@end
+
+// 2. 拦截 Sensor 数据源：让系统以为没有任何 App 在使用麦克风/摄像头
 %hook CCUIStatusSensorActivityData
 
 - (BOOL)isSensorActivityActive {
@@ -9,7 +17,7 @@
 
 %end
 
-// 2. 拦截 AV 控制模块视图（控制中心顶部两个长条）
+// 3. 拦截 AV 控制器：阻止视图加载并强行清空
 %hook CCUIAVControlsViewController
 
 - (void)viewDidLoad {
@@ -22,12 +30,19 @@
 - (void)viewWillAppear:(BOOL)animated {
     %orig;
     self.view.hidden = YES;
-    [self.view removeFromSuperview];
+    if (self.view.superview) {
+        [self.view removeFromSuperview];
+    }
+}
+
+- (CGSize)preferredContentSize {
+    // 强制把模块所需尺寸设为零，防止占位
+    return CGSizeZero;
 }
 
 %end
 
-// 3. 拦截控制中心顶部的 Sensor 状态容器
+// 4. 拦截控制中心顶部栏：隐藏容器
 %hook CCUIOverlayStatusBarViewController
 
 - (void)viewWillLayoutSubviews {
@@ -37,7 +52,6 @@
         if (controlsView) {
             controlsView.hidden = YES;
             controlsView.alpha = 0.0;
-            [controlsView removeFromSuperview];
         }
     }
 }
