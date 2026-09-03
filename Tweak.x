@@ -1,51 +1,53 @@
 #import <UIKit/UIKit.h>
 
-// 1. 拦截底层传感器（Sensor）数据源：直接告诉系统“没有 App 在使用麦克风/相机”
-%hook CCUIStatusSensorActivityData
+// 1. 声明私有类，避免 Clang 编译报错
+@interface CCUIOverlayStatusBarViewController : UIViewController
+- (id)controlsView;
+@end
 
-- (BOOL)isSensorActivityActive {
-    return NO;
-}
-
-- (NSUInteger)sensorType {
-    return 0; // 屏蔽类型
-}
-
-%end
-
-// 2. 拦截系统 AV 路由与模块状态管理器
-%hook CCUIAVControlsViewController
-
-- (BOOL)_canShow {
-    return NO;
-}
-
-- (BOOL)hasContent {
-    return NO;
-}
-
-- (void)viewDidLoad {
-    %orig;
-    self.view.hidden = YES;
-    [self.view removeFromSuperview];
-}
-
-%end
-
-// 3. 拦截顶层容器：将包含了这两个控件的 Header View 强制隐藏
+// 2.【核心截断】 Hook 控制中心顶部状态栏视图
 %hook CCUIOverlayStatusBarViewController
 
 - (void)viewWillLayoutSubviews {
     %orig;
-    // 取得 controlsView 容器直接做销毁/隐藏
     if ([self respondsToSelector:@selector(controlsView)]) {
-        UIView *cView = [self performSelector:@selector(controlsView)];
-        if (cView) {
-            cView.hidden = YES;
-            cView.alpha = 0.0;
-            cView.frame = CGRectZero;
+        UIView *controlsView = [self performSelector:@selector(controlsView)];
+        if (controlsView) {
+            controlsView.hidden = YES;
+            controlsView.alpha = 0.0;
+            // 直接拔除父视图，强行阻止渲染
+            [controlsView removeFromSuperview];
         }
     }
+}
+
+%end
+
+// 3.【视图拦截】直接拦截系统 UI 节点的尺寸和隐藏状态
+%hook UIView
+
+- (void)layoutSubviews {
+    %orig;
+    NSString *className = NSStringFromClass([self class]);
+    // 匹配麦克风模式/视频效果等一切相关 UI 控件
+    if ([className containsString:@"AVControls"] || 
+        [className containsString:@"SensorActivity"] || 
+        [className containsString:@"ControlsServerOrigin"] ||
+        [className containsString:@"MicMode"] ||
+        [className containsString:@"VideoEffects"]) {
+        self.hidden = YES;
+        self.alpha = 0.0;
+        self.frame = CGRectZero;
+    }
+}
+
+%end
+
+// 4.【数据拦截】截断传感器状态激活标记
+%hook CCUIStatusSensorActivityData
+
+- (BOOL)isSensorActivityActive {
+    return NO;
 }
 
 %end
