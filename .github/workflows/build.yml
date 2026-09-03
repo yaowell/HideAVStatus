@@ -21,14 +21,24 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install Theos and SDKs
+      # 安装 Theos、SDKs 以及核心的 Linux 交叉编译工具链 (Toolchain)
+      - name: Install Theos, SDKs, and Toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang make perl libssl-dev unzip
+          sudo apt-get install -y clang make perl libssl-dev unzip wget
+          
+          # 1. 克隆 Theos 主程序
           git clone --recursive https://github.com/theos/theos.git $HOME/theos
+          
+          # 2. 下载 iOS SDKs
           curl -LO https://github.com/theos/sdks/archive/master.zip
           unzip master.zip
           mv sdks-master/* $HOME/theos/sdks/
+          
+          # 3. 下载 Linux 版 iOS 交叉编译器 (Toolchain)
+          mkdir -p $HOME/theos/toolchain/linux/iphone
+          curl -LO https://github.com/kabiroberai/theos-toolchain-script/releases/download/v1.0.0/toolchain-linux-x86_64.tar.gz
+          tar -xzf toolchain-linux-x86_64.tar.gz -C $HOME/theos/toolchain/linux/iphone/
 
       - name: Build Rootless Package
         run: |
