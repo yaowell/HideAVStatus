@@ -1,32 +1,27 @@
 #import <UIKit/UIKit.h>
 
-@interface CCUIModuleRepository : NSObject
+@interface NSNotificationCenter (CCUIBlock)
 @end
 
-// 1.【绝杀模块注册】：在 Repository 扫描/加载模块列表时，直接过滤掉音视频控制模块
-%hook CCUIModuleRepository
+// 1.【绝杀广播信号】：拦截所有发给控制中心的传感器状态变化通知
+%hook NSNotificationCenter
 
-- (id)_loadModuleWithIdentifier:(NSString *)identifier {
-    if ([identifier containsString:@"AudioSettings"] || 
-        [identifier containsString:@"VideoSettings"] ||
-        [identifier containsString:@"com.apple.replaykit"]) {
-        return nil; // 强行返回 nil，从系统模块仓库中删除
+- (void)postNotificationName:(NSNotificationName)aName object:(id)anObject userInfo:(NSDictionary *)aUserInfo {
+    NSString *name = (NSString *)aName;
+    if ([name containsString:@"SensorAttribution"] || 
+        [name containsString:@"AVSystemController_SystemVolume"] ||
+        [name containsString:@"PrivacyAccounting"] ||
+        [name containsString:@"RPCCAudio"] ||
+        [name containsString:@"RPCCVideo"]) {
+        // 强行丢弃通知，不向 ControlCenter 广播
+        return;
     }
-    return %orig;
-}
-
-- (BOOL)isModuleSupportedWithIdentifier:(NSString *)identifier {
-    if ([identifier containsString:@"AudioSettings"] || 
-        [identifier containsString:@"VideoSettings"] ||
-        [identifier containsString:@"com.apple.replaykit"]) {
-        return NO; // 告诉系统当前设备/环境不支持该模块
-    }
-    return %orig;
+    %orig;
 }
 
 %end
 
-// 2.【绝杀 UI 布局扩展】：锁定顶部 Header 不产生拉伸
+// 2.【绝杀视图层状态】：锁死 Pocket 视图，不允许响应任何展开状态
 %hook CCUIHeaderPocketView
 
 - (BOOL)isSensorAttributionActive {
@@ -39,6 +34,10 @@
 
 - (void)setSensorAttributionExpanded:(BOOL)expanded {
     %orig(NO);
+}
+
+- (void)setSensorAttributionExpanded:(BOOL)expanded animated:(BOOL)animated {
+    %orig(NO, NO);
 }
 
 %end
