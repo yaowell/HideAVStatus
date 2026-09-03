@@ -1,16 +1,19 @@
 #import <UIKit/UIKit.h>
 
-// 1. 显式声明接口，防止编译报错
-@interface CCUIAVControlsViewController : UIViewController
-- (BOOL)_canShow;
-- (BOOL)hasContent;
-@end
+// 1. 拦截底层传感器（Sensor）数据源：直接告诉系统“没有 App 在使用麦克风/相机”
+%hook CCUIStatusSensorActivityData
 
-@interface CCUIOverlayStatusBarViewController : UIViewController
-- (id)controlsView;
-@end
+- (BOOL)isSensorActivityActive {
+    return NO;
+}
 
-// 2.【彻底熔断】拦截 AV 控制器的显示条件判断
+- (NSUInteger)sensorType {
+    return 0; // 屏蔽类型
+}
+
+%end
+
+// 2. 拦截系统 AV 路由与模块状态管理器
 %hook CCUIAVControlsViewController
 
 - (BOOL)_canShow {
@@ -21,35 +24,26 @@
     return NO;
 }
 
-// 在加载 View 的瞬间直接替换成 0 尺寸的透明空 View
-- (void)loadView {
-    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
-    emptyView.hidden = YES;
-    emptyView.alpha = 0.0;
-    self.view = emptyView;
-}
-
-- (void)viewWillAppear:(BOOL)animated {
+- (void)viewDidLoad {
     %orig;
     self.view.hidden = YES;
-    self.view.frame = CGRectZero;
     [self.view removeFromSuperview];
 }
 
 %end
 
-// 3.【强行拔除】控制中心顶部容器 View 拦截
+// 3. 拦截顶层容器：将包含了这两个控件的 Header View 强制隐藏
 %hook CCUIOverlayStatusBarViewController
 
-- (void)viewDidLayoutSubviews {
+- (void)viewWillLayoutSubviews {
     %orig;
+    // 取得 controlsView 容器直接做销毁/隐藏
     if ([self respondsToSelector:@selector(controlsView)]) {
-        UIView *controlsView = [self performSelector:@selector(controlsView)];
-        if (controlsView) {
-            controlsView.hidden = YES;
-            controlsView.alpha = 0.0;
-            controlsView.frame = CGRectZero;
-            [controlsView removeFromSuperview];
+        UIView *cView = [self performSelector:@selector(controlsView)];
+        if (cView) {
+            cView.hidden = YES;
+            cView.alpha = 0.0;
+            cView.frame = CGRectZero;
         }
     }
 }
