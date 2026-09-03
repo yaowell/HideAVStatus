@@ -21,22 +21,32 @@ jobs:
         with:
           submodules: recursive
 
-      # 使用经过验证且稳定的 Theos 环境配置
-      - name: Setup Theos
-        uses: theos/setup-theos-action@v1
+      # 直接在 Linux 环境中原生安装 Theos 和 SDK
+      - name: Install Theos and Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang make perl libssl-dev
+          git clone --recursive https://github.com/theos/theos.git $HOME/theos
+          curl -LO https://github.com/theos/sdks/archive/master.zip
+          unzip master.zip
+          mv sdks-master/* $HOME/theos/sdks/
+          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
 
+      # 1. 编译无根 (Rootless) 版本
       - name: Build Rootless Package
         run: |
           make clean package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
           mkdir -p output/rootless
           mv packages/*.deb output/rootless/
 
+      # 2. 编译隐根 (Roothide) 版本
       - name: Build Roothide Package
         run: |
           make clean package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide
           mkdir -p output/roothide
           mv packages/*.deb output/roothide/
 
+      # 3. 上传无根包产物
       - name: Upload Rootless Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -44,6 +54,7 @@ jobs:
           path: output/rootless/*.deb
           if-no-files-found: error
 
+      # 4. 上传隐根包产物
       - name: Upload Roothide Artifact
         uses: actions/upload-artifact@v4
         with:
