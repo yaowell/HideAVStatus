@@ -1,62 +1,64 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
+#import <dlfcn.h>
 
+// 1. 声明私有接口
 @interface RPCCAudioSettingsModuleViewController : UIViewController
 @end
 
-// 1. 强行 Hook 工厂构造函数，阻止控制器实例化
+// 2. 定义 Hook 组，专门针对延迟加载的 AudioSettings 模块
+%group AudioSettingsHook
+
 %hook RPCCAudioSettingsModuleViewController
 
-+ (id)alloc {
-    // 实例化时直接阻止或重定向（如果无法直接返回 nil，则在 init 阶段抹杀）
-    return %orig;
-}
-
-- (id)init {
-    self = %orig;
-    if (self) {
-        // 强制清空内部视图属性
-        self.view.hidden = YES;
-        self.view.alpha = 0.0;
-        self.view.frame = CGRectZero;
-    }
-    return self;
-}
-
-// 2. 重写所有布局与绘制方法，彻底瘫痪渲染
 - (void)loadView {
+    // 强制替换为 0 尺寸的空白隐藏 View
     UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
     emptyView.hidden = YES;
-    emptyView.userInteractionEnabled = NO;
+    emptyView.alpha = 0.0;
     self.view = emptyView;
 }
 
 - (void)viewDidLoad {
     %orig;
+    self.view.hidden = YES;
+    self.view.alpha = 0.0;
+    self.view.frame = CGRectZero;
     [self.view removeFromSuperview];
 }
 
-- (void)viewWillLayoutSubviews {
+- (void)viewWillAppear:(BOOL)animated {
     %orig;
-    self.view.frame = CGRectZero;
     self.view.hidden = YES;
     [self.view removeFromSuperview];
 }
 
 %end
 
-// 3. 拦截容器视图层：直接匹配类名，在父 View 层面拒绝添加
-%hook UIView
+%end // end group
 
-- (void)addSubview:(UIView *)view {
-    NSString *clsName = NSStringFromClass([view class]);
-    if ([clsName containsString:@"RPCCAudioSettings"] || 
-        [clsName containsString:@"CCUISensorAttribution"]) {
-        view.hidden = YES;
-        view.frame = CGRectZero;
-        return; // 直接拦截，拒绝添加到视图树
+// 3. 构造函数：监听动态 Bundle 的加载
+%ctor {
+    @autoreleasepool {
+        %init; // 初始化全局 Hook
+        
+        // 动态监听 Bundle 或类加载
+        void (^initHook)(void) = ^{
+            Class targetClass = objc_getClass("RPCCAudioSettingsModuleViewController");
+            if (targetClass) {
+                %init(AudioSettingsHook, RPCCAudioSettingsModuleViewController = targetClass);
+            }
+        };
+
+        // 尝试直接初始化
+        initHook();
+
+        // 监听系统 NSBundleDidLoadNotification 通知，一旦 AudioSettings Bundle 被加载立刻注入
+        [[NSNotificationCenter defaultCenter] addObserverForName:NSBundleDidLoadNotification
+                                                          object:nil
+                                                           queue:[NSOperationQueue mainQueue]
+                                                      usingBlock:^(NSNotification *note) {
+            initHook();
+        }];
     }
-    %orig(view);
 }
-
-%end
