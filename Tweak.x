@@ -1,70 +1,62 @@
 #import <UIKit/UIKit.h>
 
-@interface RPCCAudioSettingsModuleViewController : UIViewController
-@end
-
-@interface RPCCVideoSettingsModuleViewController : UIViewController
+// 1. 声明控制中心核心布局容器
+@interface CCUIModuleCollectionViewController : UIViewController
+@property (nonatomic, assign) UIEdgeInsets additionalContentInset;
 @end
 
 @interface CCUIContentModuleContainerViewController : UIViewController
 @end
 
-// 1. 拦截音频模块：把 preferredContentSize 强行重写为 Zero
+// 2.【清除顶部留白】强制重写控制中心集合视图的顶部内边距
+%hook CCUIModuleCollectionViewController
+
+- (UIEdgeInsets)_compactLayoutInset {
+    UIEdgeInsets orig = %orig;
+    orig.top = 0; // 强制抹平顶部边距
+    return orig;
+}
+
+- (void)viewWillLayoutSubviews {
+    %orig;
+    // 强制归零 additionalContentInset
+    if ([self respondsToSelector:@selector(setAdditionalContentInset:)]) {
+        self.additionalContentInset = UIEdgeInsetsZero;
+    }
+    
+    // 遍历 ScrollView 强行调整 offset 和 contentInset
+    if ([self.view isKindOfClass:[UIScrollView class]]) {
+        UIScrollView *scrollView = (UIScrollView *)self.view;
+        UIEdgeInsets insets = scrollView.contentInset;
+        if (insets.top > 0) {
+            insets.top = 0;
+            scrollView.contentInset = insets;
+        }
+    }
+}
+
+%end
+
+// 3.【模块剥离】保持两个音视频模块的隐藏和尺寸归零
 %hook RPCCAudioSettingsModuleViewController
-
-- (CGSize)preferredContentSize {
-    return CGSizeZero;
-}
-
-- (void)loadView {
-    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
-    emptyView.hidden = YES;
-    self.view = emptyView;
-}
-
-- (void)viewDidLoad {
-    %orig;
-    UIViewController *vc = (UIViewController *)self;
-    vc.view.hidden = YES;
-    vc.view.frame = CGRectZero;
-    [vc.view removeFromSuperview];
-}
-
+- (CGSize)preferredContentSize { return CGSizeZero; }
+- (void)loadView { self.view = [[UIView alloc] initWithFrame:CGRectZero]; self.view.hidden = YES; }
 %end
 
-// 2. 拦截视频模块：把 preferredContentSize 强行重写为 Zero
 %hook RPCCVideoSettingsModuleViewController
-
-- (CGSize)preferredContentSize {
-    return CGSizeZero;
-}
-
-- (void)loadView {
-    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
-    emptyView.hidden = YES;
-    self.view = emptyView;
-}
-
-- (void)viewDidLoad {
-    %orig;
-    UIViewController *vc = (UIViewController *)self;
-    vc.view.hidden = YES;
-    vc.view.frame = CGRectZero;
-    [vc.view removeFromSuperview];
-}
-
+- (CGSize)preferredContentSize { return CGSizeZero; }
+- (void)loadView { self.view = [[UIView alloc] initWithFrame:CGRectZero]; self.view.hidden = YES; }
 %end
 
-// 3. 拦截容器及 UIStackView 布局：物理移除节点并让尺寸塌陷
+// 4.【容器塌陷】外层 ModuleContainer 尺寸抹平
 %hook CCUIContentModuleContainerViewController
 
 - (CGSize)preferredContentSize {
     UIViewController *vc = (UIViewController *)self;
     if (vc.childViewControllers.count > 0) {
         NSString *childCls = NSStringFromClass([vc.childViewControllers.firstObject class]);
-        if ([childCls containsString:@"RPCCAudioSettings"] || 
-            [childCls containsString:@"RPCCVideoSettings"]) {
-            return CGSizeZero; // 尺寸彻底归零，触发面板重新计算总高度
+        if ([childCls containsString:@"RPCCAudioSettings"] || [childCls containsString:@"RPCCVideoSettings"]) {
+            return CGSizeZero;
         }
     }
     return %orig;
@@ -75,31 +67,10 @@
     UIViewController *vc = (UIViewController *)self;
     if (vc.childViewControllers.count > 0) {
         NSString *childCls = NSStringFromClass([vc.childViewControllers.firstObject class]);
-        if ([childCls containsString:@"RPCCAudioSettings"] || 
-            [childCls containsString:@"RPCCVideoSettings"]) {
+        if ([childCls containsString:@"RPCCAudioSettings"] || [childCls containsString:@"RPCCVideoSettings"]) {
             vc.view.hidden = YES;
-            vc.view.alpha = 0.0;
             vc.view.frame = CGRectZero;
             [vc.view removeFromSuperview];
-        }
-    }
-}
-
-%end
-
-// 4. 从 Auto Layout 的 ArrangedSubviews 布局栈中直接拔除
-%hook UIStackView
-
-- (void)layoutSubviews {
-    %orig;
-    for (UIView *subview in [self.arrangedSubviews copy]) {
-        NSString *clsName = NSStringFromClass([subview class]);
-        if ([clsName containsString:@"RPCCAudioSettings"] || 
-            [clsName containsString:@"RPCCVideoSettings"]) {
-            subview.hidden = YES;
-            subview.frame = CGRectZero;
-            [self removeArrangedSubview:subview]; // 从 StackView 布局计算中抹除
-            [subview removeFromSuperview];
         }
     }
 }
