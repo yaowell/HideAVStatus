@@ -1,43 +1,130 @@
 #import <UIKit/UIKit.h>
 
-@interface NSNotificationCenter (CCUIBlock)
+// ============================================================
+// 接口声明
+// ============================================================
+
+@interface RPCCAudioSettingsModuleViewController : UIViewController
 @end
 
-// 1.【绝杀广播信号】：拦截所有发给控制中心的传感器状态变化通知
-%hook NSNotificationCenter
+@interface RPCCVideoSettingsModuleViewController : UIViewController
+@end
 
-- (void)postNotificationName:(NSNotificationName)aName object:(id)anObject userInfo:(NSDictionary *)aUserInfo {
-    NSString *name = (NSString *)aName;
-    if ([name containsString:@"SensorAttribution"] || 
-        [name containsString:@"AVSystemController_SystemVolume"] ||
-        [name containsString:@"PrivacyAccounting"] ||
-        [name containsString:@"RPCCAudio"] ||
-        [name containsString:@"RPCCVideo"]) {
-        // 强行丢弃通知，不向 ControlCenter 广播
-        return;
-    }
+
+// ============================================================
+// 判断是否为我们要隐藏的 RPCC 模块
+// ============================================================
+
+static BOOL BMIsRPCCHiddenModule(UIViewController *vc)
+{
+    NSString *cls = NSStringFromClass([vc class]);
+
+    return [cls isEqualToString:@"RPCCAudioSettingsModuleViewController"] ||
+           [cls isEqualToString:@"RPCCVideoSettingsModuleViewController"];
+}
+
+
+// ============================================================
+// 麦克风模式
+// ============================================================
+
+%hook RPCCAudioSettingsModuleViewController
+
+- (void)loadView
+{
+    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
+
+    emptyView.hidden = YES;
+    emptyView.alpha = 0.0;
+    emptyView.userInteractionEnabled = NO;
+
+    self.view = emptyView;
+}
+
+- (void)viewDidLoad
+{
     %orig;
+
+    self.view.hidden = YES;
+    self.view.alpha = 0.0;
+    self.view.userInteractionEnabled = NO;
+}
+
+- (CGSize)preferredContentSize
+{
+    return CGSizeZero;
+}
+
+- (CGSize)systemLayoutSizeFittingSize:(CGSize)targetSize
+{
+    return CGSizeZero;
+}
+
+- (CGSize)sizeForChildContentContainer:(id<UIContentContainer>)container
+                               withParentContainerSize:(CGSize)parentSize
+{
+    return CGSizeZero;
+}
+
+- (void)viewDidLayoutSubviews
+{
+    %orig;
+
+    self.view.hidden = YES;
+    self.view.alpha = 0.0;
 }
 
 %end
 
-// 2.【绝杀视图层状态】：锁死 Pocket 视图，不允许响应任何展开状态
-%hook CCUIHeaderPocketView
 
-- (BOOL)isSensorAttributionActive {
-    return NO;
+// ============================================================
+// 视讯效果
+// ============================================================
+
+%hook RPCCVideoSettingsModuleViewController
+
+- (void)loadView
+{
+    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
+
+    emptyView.hidden = YES;
+    emptyView.alpha = 0.0;
+    emptyView.userInteractionEnabled = NO;
+
+    self.view = emptyView;
 }
 
-- (BOOL)isSensorAttributionExpanded {
-    return NO;
+- (void)viewDidLoad
+{
+    %orig;
+
+    self.view.hidden = YES;
+    self.view.alpha = 0.0;
+    self.view.userInteractionEnabled = NO;
 }
 
-- (void)setSensorAttributionExpanded:(BOOL)expanded {
-    %orig(NO);
+- (CGSize)preferredContentSize
+{
+    return CGSizeZero;
 }
 
-- (void)setSensorAttributionExpanded:(BOOL)expanded animated:(BOOL)animated {
-    %orig(NO, NO);
+- (CGSize)systemLayoutSizeFittingSize:(CGSize)targetSize
+{
+    return CGSizeZero;
+}
+
+- (CGSize)sizeForChildContentContainer:(id<UIContentContainer>)container
+                               withParentContainerSize:(CGSize)parentSize
+{
+    return CGSizeZero;
+}
+
+- (void)viewDidLayoutSubviews
+{
+    %orig;
+
+    self.view.hidden = YES;
+    self.view.alpha = 0.0;
 }
 
 %end
