@@ -2,10 +2,9 @@ TARGET := iphone:clang:16.5:14.0
 INSTALL_TARGET_PROCESSES = SpringBoard
 THEOS_PACKAGE_SCHEME = roothide
 
-include $(THEOS_MAKE_PATH)/common.mk
+include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = RPCCHideCC
-
 RPCCHideCC_FILES = Tweak.xm
 RPCCHideCC_CFLAGS = -fobjc-arc
 
