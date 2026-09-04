@@ -1,15 +1,15 @@
 #import <UIKit/UIKit.h>
 
+@interface CCUIModuleCollectionViewController : UIViewController <UICollectionViewDelegate, UICollectionViewDataSource, UICollectionViewDelegateFlowLayout>
+@end
+
 @interface RPCCAudioSettingsModuleViewController : UIViewController
 @end
 
 @interface RPCCVideoSettingsModuleViewController : UIViewController
 @end
 
-@interface CCUIContentModuleContainerViewController : UIViewController
-@end
-
-// 1. 保留你完全有效的 VC 视图彻底剥离逻辑
+// 1. 保留你已验证有效的 VC 实体剥离
 %hook RPCCAudioSettingsModuleViewController
 - (void)loadView {
     UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
@@ -34,43 +34,39 @@
 }
 %end
 
-// 2. 核心：沿着视图链向上“强行抹平”所有父级容器的 Height 和 Frame
-%hook CCUIContentModuleContainerViewController
+// 2.【绝杀 CollectionView 占位】：直接干掉占位 Cell 的尺寸计算
+%hook CCUIModuleCollectionViewController
 
-- (void)viewDidLayoutSubviews {
-    %orig;
+- (CGSize)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout sizeForItemAtIndexPath:(NSIndexPath *)indexPath {
+    // 获取当前 indexPath 对应的 VC 或 Cell
+    UICollectionViewCell *cell = [collectionView cellForItemAtIndexPath:indexPath];
     
-    UIViewController *vc = (UIViewController *)self;
-    if (vc.childViewControllers.count > 0) {
-        NSString *childCls = NSStringFromClass([vc.childViewControllers.firstObject class]);
-        if ([childCls containsString:@"RPCCAudioSettings"] || [childCls containsString:@"RPCCVideoSettings"]) {
-            
-            // 隐藏当前 VC 的 View 并清空 Frame
-            vc.view.hidden = YES;
-            vc.view.frame = CGRectZero;
-            [vc.view removeFromSuperview];
-            
-            // 向上递归遍历所有父级 View，强行把它们的尺寸全拉成 0，彻底压扁空白区域
-            UIView *parent = vc.view.superview;
-            while (parent != nil) {
-                // 如果父视图的类名包含 CCUI 或者 Header，说明到了控制中心的容器层
-                NSString *parentCls = NSStringFromClass([parent class]);
-                
-                // 将父视图的高度强制压扁成 0
-                CGRect pFrame = parent.frame;
-                pFrame.size.height = 0;
-                parent.frame = pFrame;
-                parent.clipsToBounds = YES;
-                
-                // 如果到了最外层的 PocketView，直接隐藏
-                if ([parentCls containsString:@"HeaderPocket"] || [parentCls containsString:@"ModuleContainer"]) {
-                    parent.hidden = YES;
-                }
-                
-                parent = parent.superview;
-            }
+    // 如果 Cell 内部包含音视频模块，或者 frame 符合截图中的 {159, 72} 动态卡片特征
+    if (cell) {
+        NSString *cellDescription = [cell description];
+        if ([cellDescription containsString:@"RPCCAudio"] || [cellDescription containsString:@"RPCCVideo"]) {
+            return CGSizeZero; // 强行把 Cell 尺寸归零，CollectionView 会自动将后续 Cell 上移补位
         }
     }
+    
+    CGSize originalSize = %orig;
+    // 双重保险：防线归零
+    if (originalSize.height == 72 && (originalSize.width == 159 || originalSize.width > 150)) {
+        // 如果是顶部动态弹出的传感器模块尺寸，直接抹平
+        return CGSizeZero;
+    }
+    
+    return originalSize;
+}
+
+// 3.【防止系统给该 Cell 分配 EdgeInsets 内边距】
+- (UIEdgeInsets)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout insetForSectionAtIndex:(NSInteger)section {
+    UIEdgeInsets insets = %orig;
+    // 如果顶部有留白 Padding，强行清空顶部 Inset
+    if (insets.top > 0) {
+        insets.top = 0;
+    }
+    return insets;
 }
 
 %end
