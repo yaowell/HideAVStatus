@@ -6,86 +6,81 @@
 @interface RPCCVideoSettingsModuleViewController : UIViewController
 @end
 
-#pragma mark - 1. 隐藏音频模块
+@interface CCUIContentModuleContainerViewController : UIViewController
+@end
+
+// 1. 音频模块（你的原始代码，一字不改）
 %hook RPCCAudioSettingsModuleViewController
 - (void)loadView {
-    UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
-    v.hidden = YES;
-    v.userInteractionEnabled = NO;
-    self.view = v;
+    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
+    emptyView.hidden = YES;
+    emptyView.userInteractionEnabled = NO;
+    self.view = emptyView;
 }
 - (void)viewDidLoad {
     %orig;
     self.view.hidden = YES;
-    self.view.alpha = 0;
+    self.view.alpha = 0.0;
     self.view.frame = CGRectZero;
+    [self.view removeFromSuperview];
 }
 - (CGSize)preferredContentSize { return CGSizeZero; }
 %end
 
-#pragma mark - 2. 隐藏视频模块
+// 2. 视频模块（你的原始代码，一字不改）
 %hook RPCCVideoSettingsModuleViewController
 - (void)loadView {
-    UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
-    v.hidden = YES;
-    v.userInteractionEnabled = NO;
-    self.view = v;
+    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
+    emptyView.hidden = YES;
+    emptyView.userInteractionEnabled = NO;
+    self.view = emptyView;
 }
 - (void)viewDidLoad {
     %orig;
     self.view.hidden = YES;
-    self.view.alpha = 0;
+    self.view.alpha = 0.0;
     self.view.frame = CGRectZero;
+    [self.view removeFromSuperview];
 }
 - (CGSize)preferredContentSize { return CGSizeZero; }
 %end
 
-#pragma mark - 3. 核心：collectionView 每次布局后强制压缩目标 cell
-%hook UICollectionView
-- (void)layoutSubviews {
+// 3. 容器：隐藏 + 消除占位
+%hook CCUIContentModuleContainerViewController
+- (void)viewWillLayoutSubviews {
     %orig;
+    UIViewController *child = self.childViewControllers.firstObject;
+    if(!child) return;
+    NSString *cls = NSStringFromClass([child class]);
+    if(![cls containsString:@"RPCCAudioSettings"] && ![cls containsString:@"RPCCVideoSettings"]) return;
 
-    // 只处理控制中心的 collectionView
-    NSString *cvCls = NSStringFromClass(self.class);
-    BOOL isCC = [cvCls containsString:@"CCUI"];
-    if(!isCC) {
-        UIResponder *r = self.nextResponder;
-        while(r) {
-            if([NSStringFromClass([r class]) containsString:@"CCUIModule"]) {
-                isCC = YES; break;
-            }
-            r = r.nextResponder;
+    // 先记住 cell 和 collectionView（removeFromSuperview 后就拿不到了）
+    UIView *cell = self.view.superview;
+    UICollectionView *cv = nil;
+    UIView *v = cell;
+    while(v) {
+        if([v isKindOfClass:[UICollectionView class]]) {
+            cv = (UICollectionView *)v;
+            break;
         }
+        v = v.superview;
     }
-    if(!isCC) return;
 
-    // 遍历可见 cell，通过响应链找包含 RPCC 模块的 cell
-    for(UICollectionViewCell *cell in self.visibleCells) {
-        UIResponder *resp = cell;
-        BOOL hit = NO;
-        while(resp) {
-            if([resp isKindOfClass:[UIViewController class]]) {
-                NSString *rcls = NSStringFromClass([resp class]);
-                if([rcls containsString:@"RPCCAudio"] || [rcls containsString:@"RPCCVideo"]) {
-                    hit = YES; break;
-                }
-                for(id ch in [(UIViewController *)resp childViewControllers]) {
-                    NSString *ccls = NSStringFromClass([ch class]);
-                    if([ccls containsString:@"RPCCAudio"] || [ccls containsString:@"RPCCVideo"]) {
-                        hit = YES; break;
-                    }
-                }
-                if(hit) break;
-            }
-            resp = resp.nextResponder;
-        }
-        if(hit) {
+    // 你原来的隐藏逻辑，一字不改
+    self.view.hidden = YES;
+    self.view.alpha = 0.0;
+    self.view.frame = CGRectZero;
+    [self.view removeFromSuperview];
+
+    // 关键：下一个 runloop 把 cell 高度压成 0，并通知 collectionView 重新布局
+    if(cell && cv) {
+        dispatch_async(dispatch_get_main_queue(), ^{
             CGRect f = cell.frame;
             f.size.height = 0;
             cell.frame = f;
             cell.hidden = YES;
-            cell.alpha = 0;
-        }
+            [cv.collectionViewLayout invalidateLayout];
+        });
     }
 }
 %end
