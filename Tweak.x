@@ -13,7 +13,7 @@ static BOOL isTargetModule(id obj) {
     return [cls containsString:@"RPCCAudioSettings"] || [cls containsString:@"RPCCVideoSettings"];
 }
 
-#pragma mark - 1. 模块内部隐藏（兜底）
+#pragma mark - 1. 模块内部隐藏
 %hook RPCCAudioSettingsModuleViewController
 - (void)loadView {
     UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
@@ -42,14 +42,14 @@ static BOOL isTargetModule(id obj) {
 }
 %end
 
-#pragma mark - 2. 核心：布局后消除占位（纯UI操作，不碰内部数据）
+#pragma mark - 2. 布局后消除占位（纯UI操作）
 %hook CCUIModuleCollectionView
 
 - (void)layoutSubviews {
     %orig;
     
-    // 按垂直位置排序所有模块
-    NSArray *sorted = [self.subviews sortedArrayUsingComparator:^NSComparisonResult(UIView *a, UIView *b) {
+    UIView *view = (UIView *)self;
+    NSArray *sorted = [view.subviews sortedArrayUsingComparator:^NSComparisonResult(UIView *a, UIView *b) {
         return [@(a.frame.origin.y) compare:@(b.frame.origin.y)];
     }];
     
@@ -58,15 +58,13 @@ static BOOL isTargetModule(id obj) {
         CGRect frame = subview.frame;
         frame.origin.y -= offset;
         
-        // 识别目标模块容器
-        BOOL isTarget = NO;
         UIResponder *resp = subview.nextResponder;
-        if ([resp isKindOfClass:NSClassFromString(@"CCUIContentModuleContainerViewController")]) {
+        Class containerCls = NSClassFromString(@"CCUIContentModuleContainerViewController");
+        if ([resp isKindOfClass:containerCls]) {
             UIViewController *container = (UIViewController *)resp;
             if (container.childViewControllers.count > 0) {
                 id child = container.childViewControllers.firstObject;
                 if (isTargetModule(child)) {
-                    isTarget = YES;
                     offset += CGRectGetHeight(subview.frame);
                     frame.size.height = 0;
                     subview.hidden = YES;
