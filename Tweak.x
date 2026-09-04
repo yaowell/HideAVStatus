@@ -1,48 +1,66 @@
 #import <UIKit/UIKit.h>
 
-@interface CCUIRecordingIndicatorModuleViewController : UIViewController
+@protocol CCUIContentModule <NSObject>
 @end
 
-// 1. Hook 顶部指示器 View，强制隐藏并禁止重绘
-%hook CCUIRecordingIndicatorView
+@interface CCUIContentModuleContainerViewController : UIViewController
+@property (nonatomic, strong, readwrite) id<CCUIContentModule> contentModule;
+@end
 
-- (void)setHidden:(BOOL)hidden {
-    %orig(YES);
-}
+@interface CCUIModuleCollectionViewLayout : UICollectionViewLayout
+@end
 
-- (void)setAlpha:(CGFloat)alpha {
-    %orig(0.0);
-}
+%hook CCUIContentModuleContainerViewController
 
-- (void)layoutSubviews {
-    %orig;
-    ((UIView *)self).hidden = YES;
+- (id<CCUIContentModule>)contentModule {
+    UIViewController *childVc = self.childViewControllers.firstObject;
+    if(childVc) {
+        NSString *cls = NSStringFromClass([childVc class]);
+        if ([cls isEqualToString:@"RPCCAudioSettingsModuleViewController"] ||
+            [cls isEqualToString:@"RPCCVideoSettingsModuleViewController"]) {
+            return nil;
+        }
+    }
+    return %orig;
 }
 
 %end
 
-// 2. Hook 模块控制器，把展开和常规高度全部归零，消除占位
-%hook CCUIRecordingIndicatorModuleViewController
+%hook CCUIModuleCollectionViewLayout
 
-- (double)preferredExpandedContentHeight {
-    return 0.0;
-}
-
-// 补充常规（未展开状态）的高度归零，彻底防止网格留白
-- (double)preferredContentHeight {
-    return 0.0;
-}
-
-- (CGSize)preferredContentSize {
-    return CGSizeZero;
-}
-
-- (void)viewWillLayoutSubviews {
-    %orig;
-    if (self.view) {
-        self.view.hidden = YES;
-        self.view.frame = CGRectZero;
+- (NSArray<UICollectionViewLayoutAttributes *> *)layoutAttributesForElementsInRect:(CGRect)rect {
+    NSArray *attrsArr = %orig;
+    NSMutableArray *final = [NSMutableArray array];
+    for(UICollectionViewLayoutAttributes *attr in attrsArr) {
+        UIViewController *collectionVc = [(UICollectionView *)self.collectionView delegate];
+        if(![collectionVc isKindOfClass:NSClassFromString(@"CCUIModuleCollectionViewController")]){
+            [final addObject:attr];
+            continue;
+        }
+        NSArray *containers = [collectionVc valueForKeyPath:@"moduleContainerViewControllers"];
+        if(attr.indexPath.item >= containers.count) {
+            [final addObject:attr];
+            continue;
+        }
+        id containerObj = containers[attr.indexPath.item];
+        if(![containerObj isKindOfClass:[CCUIContentModuleContainerViewController class]]){
+            [final addObject:attr];
+            continue;
+        }
+        CCUIContentModuleContainerViewController *containerVC = containerObj;
+        UIViewController *inner = containerVC.childViewControllers.firstObject;
+        if(!inner) {
+            [final addObject:attr];
+            continue;
+        }
+        NSString *innerCls = NSStringFromClass([inner class]);
+        if([innerCls isEqualToString:@"RPCCAudioSettingsModuleViewController"] ||
+           [innerCls isEqualToString:@"RPCCVideoSettingsModuleViewController"]){
+            continue;
+        }
+        [final addObject:attr];
     }
+    return final;
 }
 
 %end
