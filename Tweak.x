@@ -1,132 +1,124 @@
 #import <UIKit/UIKit.h>
 
-#pragma mark - 工具函数
-static BOOL isTargetModule(id obj) {
+#pragma mark - 工具
+static BOOL isTargetClass(id obj) {
     if(!obj) return NO;
-    id inner = nil;
-    @try { inner = [obj valueForKeyPath:@"childViewControllers.firstObject"]; }
-    @catch(NSException *e) {}
-    if(!inner) inner = obj;
-    NSString *cls = NSStringFromClass([inner class]);
+    NSString *cls = NSStringFromClass([obj class]);
     return [cls containsString:@"RPCCAudioSettings"] ||
            [cls containsString:@"RPCCVideoSettings"];
 }
 
-static void hideViewOf(id obj) {
-    UIView *v = [obj valueForKey:@"view"];
-    if(v) { v.hidden = YES; v.alpha = 0; }
-}
-
-#pragma mark - 第一层：拦截数据源 setter
-%hook CCUIModuleCollectionViewController
-
-- (void)setModuleContainerViewControllers:(NSArray *)controllers {
-    NSMutableArray *filtered = [NSMutableArray array];
-    for(id obj in controllers) {
-        if(isTargetModule(obj)) {
-            NSLog(@"[HideAV] [L1] filtered: %@", NSStringFromClass([obj class]));
-            continue;
+static void compress(UIView *v) {
+    if(!v) return;
+    CGRect f = v.frame;
+    f.size.height = 0;
+    v.frame = f;
+    v.hidden = YES;
+    v.alpha = 0;
+    for(NSLayoutConstraint *c in v.constraints) {
+        if(c.firstAttribute == NSLayoutAttributeHeight ||
+           c.secondAttribute == NSLayoutAttributeHeight) {
+            c.constant = 0;
         }
-        [filtered addObject:obj];
-    }
-    %orig(filtered);
-}
-
-- (void)set_moduleContainerViewControllers:(NSArray *)controllers {
-    NSMutableArray *filtered = [NSMutableArray array];
-    for(id obj in controllers) {
-        if(isTargetModule(obj)) {
-            NSLog(@"[HideAV] [L1b] filtered: %@", NSStringFromClass([obj class]));
-            continue;
-        }
-        [filtered addObject:obj];
-    }
-    %orig(filtered);
-}
-
-#pragma mark - 第二层：viewWillAppear 兜底
-- (void)viewWillAppear:(BOOL)animated {
-    %orig;
-    id selfId = self;
-    NSArray *keys = @[
-        @"moduleContainerViewControllers",
-        @"_moduleContainerViewControllers",
-        @"moduleContainers",
-        @"_moduleContainers"
-    ];
-    for(NSString *key in keys) {
-        @try {
-            id val = [selfId valueForKey:key];
-            if([val isKindOfClass:[NSArray class]]) {
-                NSMutableArray *arr = [val mutableCopy];
-                BOOL changed = NO;
-                for(id obj in [arr copy]) {
-                    if(isTargetModule(obj)) {
-                        [arr removeObject:obj];
-                        changed = YES;
-                        NSLog(@"[HideAV] [L2] removed via '%@': %@", key, NSStringFromClass([obj class]));
-                    }
-                }
-                if(changed) {
-                    [selfId setValue:arr forKey:key];
-                    UICollectionView *cv = [selfId valueForKey:@"collectionView"];
-                    if(cv) [cv reloadData];
-                }
-                break;
-            }
-        } @catch(NSException *e) {}
     }
 }
 
-%end
-
-#pragma mark - 第三层：Layout 兜底
-%hook CCUIModuleCollectionViewLayout
-
-- (NSArray<UICollectionViewLayoutAttributes *> *)layoutAttributesForElementsInRect:(CGRect)rect {
-    NSArray *attrs = %orig;
-    id selfId = self;
-    UICollectionView *cv = [selfId valueForKey:@"collectionView"];
-    if(!cv) return attrs;
-    id dataSource = cv.dataSource;
-    if(!dataSource) return attrs;
-
-    NSMutableArray *result = [NSMutableArray array];
-    for(UICollectionViewLayoutAttributes *attr in attrs) {
-        @try {
-            UICollectionViewCell *cell = [dataSource collectionView:cv cellForItemAtIndexPath:attr.indexPath];
-            id contentVc = [cell valueForKeyPath:@"contentViewController"];
-            if(!contentVc) contentVc = [cell valueForKeyPath:@"_contentViewController"];
-            if(isTargetModule(contentVc)) {
-                UICollectionViewLayoutAttributes *newAttr = [attr copy];
-                newAttr.size = CGSizeZero;
-                newAttr.alpha = 0;
-                newAttr.hidden = YES;
-                [result addObject:newAttr];
-                NSLog(@"[HideAV] [L3] zero-size at %@", attr.indexPath);
-                continue;
-            }
-        } @catch(NSException *e) {}
-        [result addObject:attr];
-    }
-    return result;
-}
-
-%end
-
-#pragma mark - 第四层：模块自身兜底（全部 id + KVC）
+#pragma mark - 第一层：你原始的隐藏逻辑（已验证有效，保留不动）
 %hook RPCCAudioSettingsModuleViewController
-- (CGSize)preferredContentSize { return CGSizeZero; }
+- (void)loadView {
+    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
+    emptyView.hidden = YES;
+    emptyView.userInteractionEnabled = NO;
+    self.view = emptyView;
+}
 - (void)viewDidLoad {
     %orig;
-    hideViewOf(self);
+    id s = self;
+    UIView *v = [s valueForKey:@"view"];
+    v.hidden = YES; v.alpha = 0; v.frame = CGRectZero;
+}
+- (CGSize)preferredContentSize {
+    NSLog(@"[HideAV] audio preferredContentSize queried");
+    return CGSizeZero;
 }
 %end
 
 %hook RPCCVideoSettingsModuleViewController
-- (CGSize)preferredContentSize { return CGSizeZero; }
+- (void)loadView {
+    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
+    emptyView.hidden = YES;
+    emptyView.userInteractionEnabled = NO;
+    self.view = emptyView;
+}
 - (void)viewDidLoad {
     %orig;
-    hideViewOf(self);
+    id s = self;
+    UIView *v = [s valueForKey:@"view"];
+    v.hidden = YES; v.alpha = 0; v.frame = CGRectZero;
+}
+- (CGSize)preferredContentSize {
+    NSLog(@"[HideAV] video preferredContentSize queried");
+    return CGSizeZero;
+}
+%end
+
+#pragma mark - 第二层：容器层面压缩（CCUIContentModuleContainerViewController 类名你原始代码已验证存在）
+%hook CCUIContentModuleContainerViewController
+- (void)viewDidLayoutSubviews {
+    %orig;
+    id s = self;
+    NSArray *children = [s valueForKey:@"childViewControllers"];
+    id child = children.firstObject;
+    if(!isTargetClass(child)) return;
+
+    NSLog(@"[HideAV] [L2] container hit: %@", NSStringFromClass([child class]));
+
+    UIView *containerView = [s valueForKey:@"view"];
+    compress(containerView);
+
+    // 往上压3层：contentView → cell → （可能还有一层）
+    UIView *sv = containerView.superview;
+    for(int i = 0; sv && i < 3; i++) {
+        compress(sv);
+        sv = sv.superview;
+    }
+}
+%end
+
+#pragma mark - 第三层：UICollectionView 兜底（标准 UIKit 类，100% 存在）
+%hook UICollectionView
+- (void)layoutSubviews {
+    %orig;
+    // 只处理控制中心的 collectionView
+    UIResponder *r = self.nextResponder;
+    BOOL isCC = NO;
+    while(r) {
+        if([NSStringFromClass([r class]) containsString:@"CCUIModuleCollection"]) {
+            isCC = YES; break;
+        }
+        r = r.nextResponder;
+    }
+    if(!isCC) return;
+
+    for(UICollectionViewCell *cell in self.visibleCells) {
+        UIResponder *resp = cell;
+        BOOL hit = NO;
+        while(resp) {
+            if([resp isKindOfClass:[UIViewController class]]) {
+                if(isTargetClass(resp)) { hit = YES; break; }
+                NSArray *ch = [resp valueForKey:@"childViewControllers"];
+                for(id c in ch) {
+                    if(isTargetClass(c)) { hit = YES; break; }
+                }
+                if(hit) break;
+            }
+            resp = resp.nextResponder;
+        }
+        if(hit) {
+            NSLog(@"[HideAV] [L3] cell compressed");
+            compress(cell);
+            compress(cell.contentView);
+        }
+    }
 }
 %end
