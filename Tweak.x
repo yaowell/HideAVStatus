@@ -1,6 +1,14 @@
 #import <UIKit/UIKit.h>
 
-// 判断是否为需要隐藏的录音/视频控制中心模块 ID
+// 1. 必须在所有 %hook 之前完整声明 Interface，不能依赖 Logos 的自动生成
+@interface CCUIContentModuleContainerView : UIView
+@property (nonatomic, copy, readonly) NSString *moduleIdentifier;
+@end
+
+@interface CCUIModuleCollectionViewController : UIViewController
+@end
+
+// 2. 匹配逻辑
 static BOOL isTargetModule(NSString *identifier) {
     if (!identifier) return NO;
     return [identifier isEqualToString:@"com.apple.replaykit.AudioConferenceControlCenterModule"] ||
@@ -9,7 +17,7 @@ static BOOL isTargetModule(NSString *identifier) {
            [identifier containsString:@"VideoConferenceControlCenter"];
 }
 
-// 1. 核心绝杀：在布局配置/数据源中直接剔除模块（下方组件会自动顶上去，不留空白）
+// 3. 核心布局剔除
 %hook CCUIModuleCollectionViewController
 
 - (BOOL)_shouldShowModuleWithIdentifier:(NSString *)identifier {
@@ -21,7 +29,7 @@ static BOOL isTargetModule(NSString *identifier) {
 
 %end
 
-// 2. 兜底保护：如果容器层依然尝试渲染 View，直接强制隐藏并归零
+// 4. 视图层兜底
 %hook CCUIContentModuleContainerView
 
 - (void)setFrame:(CGRect)frame {
