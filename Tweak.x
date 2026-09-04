@@ -1,6 +1,6 @@
 #import <UIKit/UIKit.h>
 
-#pragma mark - 工具
+#pragma mark - 工具函数（参数全是 id，不碰 self）
 static BOOL isTargetClass(id obj) {
     if(!obj) return NO;
     NSString *cls = NSStringFromClass([obj class]);
@@ -23,13 +23,9 @@ static void compress(UIView *v) {
     }
 }
 
-static void setViewOf(id selfObj, UIView *v) {
-    [selfObj setValue:v forKey:@"view"];
-}
-
-static UIView *getViewOf(id selfObj) {
-    return [selfObj valueForKey:@"view"];
-}
+static void setViewOf(id obj, UIView *v) { [obj setValue:v forKey:@"view"]; }
+static UIView *getViewOf(id obj) { return [obj valueForKey:@"view"]; }
+static NSArray *getChildVCs(id obj) { return [obj valueForKey:@"childViewControllers"]; }
 
 #pragma mark - 第一层：隐藏模块
 %hook RPCCAudioSettingsModuleViewController
@@ -72,7 +68,7 @@ static UIView *getViewOf(id selfObj) {
 %hook CCUIContentModuleContainerViewController
 - (void)viewDidLayoutSubviews {
     %orig;
-    NSArray *children = [self valueForKey:@"childViewControllers"];
+    NSArray *children = getChildVCs(self);
     id child = children.firstObject;
     if(!isTargetClass(child)) return;
 
@@ -89,7 +85,7 @@ static UIView *getViewOf(id selfObj) {
 }
 %end
 
-#pragma mark - 第三层：UICollectionView 兜底
+#pragma mark - 第三层：UICollectionView 兜底（系统类，self 可直接用）
 %hook UICollectionView
 - (void)layoutSubviews {
     %orig;
@@ -109,7 +105,7 @@ static UIView *getViewOf(id selfObj) {
         while(resp) {
             if([resp isKindOfClass:[UIViewController class]]) {
                 if(isTargetClass(resp)) { hit = YES; break; }
-                NSArray *ch = [resp valueForKey:@"childViewControllers"];
+                NSArray *ch = getChildVCs(resp);
                 for(id c in ch) {
                     if(isTargetClass(c)) { hit = YES; break; }
                 }
