@@ -55,12 +55,13 @@ static BOOL containsTarget(id container) {
 
 - (id)_setupAndAddModuleViewControllerToHierarchy:(id)viewController {
     id result = %orig(viewController);
+    id selfId = self;
     
     if(containsTarget(result)) {
         NSLog(@"[HideAV] 移除模块: %@", NSStringFromClass([result class]));
-        // 用系统自己的移除方法，内部状态一致，不会崩
-        if([self respondsToSelector:@selector(_removeAndTearDownModuleViewControllerFromHierarchy:)]) {
-            [self performSelector:@selector(_removeAndTearDownModuleViewControllerFromHierarchy:) withObject:result afterDelay:0.0];
+        SEL removeSel = NSSelectorFromString(@"_removeAndTearDownModuleViewControllerFromHierarchy:");
+        if([selfId respondsToSelector:removeSel]) {
+            [selfId performSelector:removeSel withObject:result afterDelay:0.0];
         }
     }
     
