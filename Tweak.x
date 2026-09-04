@@ -1,10 +1,7 @@
 #import <UIKit/UIKit.h>
+#include <sys/time.h>
 
-// ========================================
-// 工具函数
-// ========================================
-
-// 写日志到 /var/mobile/Documents/ccdebug.log
+// 1. 直接写文件（完全不依赖 NSLog）
 static void WriteDebug(NSString *fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -16,42 +13,43 @@ static void WriteDebug(NSString *fmt, ...) {
     if (![fm fileExistsAtPath:path]) {
         [fm createFileAtPath:path contents:nil attributes:nil];
     }
+    
     NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
     [fh seekToEndOfFile];
-    NSString *line = [NSString stringWithFormat:@"%@\n", msg];
+    
+    // 加个时间戳
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    NSString *line = [NSString stringWithFormat:@"[%ld.%03d] %@\n", (long)tv.tv_sec, tv.tv_usec/1000, msg];
     [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
     [fh closeFile];
 }
 
-// 从任意模块实例中取 identifier
+// 2. 辅助：安全获取模块标识符
 static NSString *identifierForInstance(id instance) {
     NSString *identifier = nil;
     @try {
         identifier = [instance valueForKey:@"moduleIdentifier"];
-        if (identifier.length == 0) identifier = [instance valueForKey:@"identifier"];
-        if (identifier.length == 0) identifier = [[instance valueForKey:@"moduleRepresentation"] valueForKey:@"identifier"];
-    } @catch (NSException *e) {}
-    return identifier ?: @"";
+        if (!identifier) identifier = [instance valueForKey:@"identifier"];
+        if (!identifier) identifier = [[instance valueForKey:@"moduleRepresentation"] valueForKey:@"identifier"];
+    } @catch (NSException *exception) {}
+    return identifier ?: @"Unknown";
 }
 
-// 判断是否为需要屏蔽的模块
+// 3. 过滤判断（先用宽泛的关键词，拿到日志后再精确修改）
 static BOOL shouldFilterIdentifier(NSString *identifier) {
-    if (identifier.length == 0) return NO;
-    // 如果下面列表没命中，可以稍后根据日志文件里的内容修改这串字符
-    return [identifier containsString:@"RPCCAudio"] ||
-           [identifier containsString:@"RPCCVideo"] ||
-           [identifier containsString:@"rpcc-audio"] ||
-           [identifier containsString:@"rpcc-video"] ||
-           [identifier containsString:@"audio-call-effects"] ||
-           [identifier containsString:@"video-call-effects"];
+    if (!identifier) return NO;
+    // 先尝试过滤包含 RPCC、Audio、Video 的模块
+    return [identifier containsString:@"RPCC"] || 
+           [identifier containsString:@"Audio"] || 
+           [identifier containsString:@"Video"];
 }
 
 // ========================================
-// 1. 过滤 moduleManager 中的模块实例（最核心）
+// Hook CCUIModuleInstanceManager
 // ========================================
 %hook CCUIModuleInstanceManager
 
-// 打印所有现有的模块，方便确认真实 identifier
 - (void)loadModules {
     %orig;
     NSArray *instances = [self valueForKey:@"moduleInstances"] ?: @[];
@@ -94,7 +92,7 @@ static BOOL shouldFilterIdentifier(NSString *identifier) {
 %end
 
 // ========================================
-// 2. 禁用模块实例（备选）
+// Hook CCUIModuleInstance (备选)
 // ========================================
 %hook CCUIModuleInstance
 
@@ -107,25 +105,15 @@ static BOOL shouldFilterIdentifier(NSString *identifier) {
     return %orig;
 }
 
-- (BOOL)enabled {
-    NSString *identifier = identifierForInstance(self);
-    if (shouldFilterIdentifier(identifier)) {
-        WriteDebug(@"[CCDebug] 已禁用 enabled: %@", identifier);
-        return NO;
-    }
-    return %orig;
-}
-
 %end
 
 // ========================================
-// 3. 集合视图层面：移除已加载的子控制器（兜底）
+// Hook CCUIModuleCollectionViewController (兜底)
 // ========================================
 %hook CCUIModuleCollectionViewController
 
 - (void)_updateEnabledModuleIdentifiers {
     %orig;
-    // 移除已被添加的 RPCC 子控制器
     NSArray *children = [self.childViewControllers copy];
     for (UIViewController *child in children) {
         NSString *cls = NSStringFromClass([child class]);
@@ -140,7 +128,7 @@ static BOOL shouldFilterIdentifier(NSString *identifier) {
 %end
 
 // ========================================
-// 4. 布局层兜底：直接把这些模块的 view 设为零尺寸
+// Hook CCUILayoutView (布局层兜底)
 // ========================================
 %hook CCUILayoutView
 
