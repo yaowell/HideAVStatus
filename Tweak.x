@@ -1,15 +1,12 @@
 #import <UIKit/UIKit.h>
 
-@interface CCUIModuleCollectionViewController : UIViewController <UICollectionViewDelegate, UICollectionViewDataSource, UICollectionViewDelegateFlowLayout>
-@end
-
 @interface RPCCAudioSettingsModuleViewController : UIViewController
 @end
 
 @interface RPCCVideoSettingsModuleViewController : UIViewController
 @end
 
-// 1. 保留你已验证有效的 VC 实体剥离
+// 1. 先确保模块内部 VC 实体彻底移除（这步之前已经成功了）
 %hook RPCCAudioSettingsModuleViewController
 - (void)loadView {
     UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
@@ -34,39 +31,35 @@
 }
 %end
 
-// 2.【绝杀 CollectionView 占位】：直接干掉占位 Cell 的尺寸计算
-%hook CCUIModuleCollectionViewController
+// 2. 针对包含这两个 VC 的外层 Cell/View，直接在 layoutSubviews 时从物理上抹平
+%hook UIView
 
-- (CGSize)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout sizeForItemAtIndexPath:(NSIndexPath *)indexPath {
-    // 获取当前 indexPath 对应的 VC 或 Cell
-    UICollectionViewCell *cell = [collectionView cellForItemAtIndexPath:indexPath];
+- (void)layoutSubviews {
+    %orig;
     
-    // 如果 Cell 内部包含音视频模块，或者 frame 符合截图中的 {159, 72} 动态卡片特征
-    if (cell) {
-        NSString *cellDescription = [cell description];
-        if ([cellDescription containsString:@"RPCCAudio"] || [cellDescription containsString:@"RPCCVideo"]) {
-            return CGSizeZero; // 强行把 Cell 尺寸归零，CollectionView 会自动将后续 Cell 上移补位
+    // 获取当前 View 关联的 View Controller
+    UIResponder *responder = self;
+    while (responder) {
+        if ([responder isKindOfClass:[UIViewController class]]) {
+            UIViewController *vc = (UIViewController *)responder;
+            NSString *clsName = NSStringFromClass([vc class]);
+            
+            // 如果这个 View 属于 Audio/Video 模块，直接压扁并隐藏
+            if ([clsName containsString:@"RPCCAudio"] || [clsName containsString:@"RPCCVideo"]) {
+                self.hidden = YES;
+                self.alpha = 0.0;
+                self.frame = CGRectZero;
+                
+                // 同时顺便把包裹它的 Cell 容器也一并压扁
+                if (self.superview && ![NSStringFromClass([self.superview class]) containsString:@"UIWindow"]) {
+                    self.superview.hidden = YES;
+                    self.superview.frame = CGRectMake(self.superview.frame.origin.x, self.superview.frame.origin.y, 0, 0);
+                }
+            }
+            break;
         }
+        responder = [responder nextResponder];
     }
-    
-    CGSize originalSize = %orig;
-    // 双重保险：防线归零
-    if (originalSize.height == 72 && (originalSize.width == 159 || originalSize.width > 150)) {
-        // 如果是顶部动态弹出的传感器模块尺寸，直接抹平
-        return CGSizeZero;
-    }
-    
-    return originalSize;
-}
-
-// 3.【防止系统给该 Cell 分配 EdgeInsets 内边距】
-- (UIEdgeInsets)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout insetForSectionAtIndex:(NSInteger)section {
-    UIEdgeInsets insets = %orig;
-    // 如果顶部有留白 Padding，强行清空顶部 Inset
-    if (insets.top > 0) {
-        insets.top = 0;
-    }
-    return insets;
 }
 
 %end
