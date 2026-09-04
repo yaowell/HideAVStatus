@@ -1,73 +1,30 @@
-#import <UIKit/UIKit.h>
-#include <sys/time.h>
+有问题？#import <UIKit/UIKit.h>
 
-// 1. 直接写文件（完全不依赖 NSLog）
-static void WriteDebug(NSString *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:args];
-    va_end(args);
-    
-    NSString *path = @"/var/mobile/Documents/ccdebug.log";
-    NSFileManager *fm = [NSFileManager defaultManager];
-    if (![fm fileExistsAtPath:path]) {
-        [fm createFileAtPath:path contents:nil attributes:nil];
-    }
-    
-    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
-    [fh seekToEndOfFile];
-    
-    // 加个时间戳
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    NSString *line = [NSString stringWithFormat:@"[%ld.%03d] %@\n", (long)tv.tv_sec, tv.tv_usec/1000, msg];
-    [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
-    [fh closeFile];
-}
-
-// 2. 辅助：安全获取模块标识符
+// 辅助函数：从任意模块实例中安全地取出标识符
 static NSString *identifierForInstance(id instance) {
     NSString *identifier = nil;
+    
     @try {
         identifier = [instance valueForKey:@"moduleIdentifier"];
         if (!identifier) identifier = [instance valueForKey:@"identifier"];
         if (!identifier) identifier = [[instance valueForKey:@"moduleRepresentation"] valueForKey:@"identifier"];
-    } @catch (NSException *exception) {}
-    return identifier ?: @"Unknown";
-}
-
-// 3. 过滤判断（先用宽泛的关键词，拿到日志后再精确修改）
-static BOOL shouldFilterIdentifier(NSString *identifier) {
-    if (!identifier) return NO;
-    // 先尝试过滤包含 RPCC、Audio、Video 的模块
-    return [identifier containsString:@"RPCC"] || 
-           [identifier containsString:@"Audio"] || 
-           [identifier containsString:@"Video"];
-}
-
-// ========================================
-// Hook CCUIModuleInstanceManager
-// ========================================
-%hook CCUIModuleInstanceManager
-
-- (void)loadModules {
-    %orig;
-    NSArray *instances = [self valueForKey:@"moduleInstances"] ?: @[];
-    for (id instance in instances) {
-        NSString *identifier = identifierForInstance(instance);
-        id vc = [instance valueForKey:@"contentViewController"];
-        WriteDebug(@"[CCDebug] Module: %@ | vc = %@", identifier,
-                   vc ? NSStringFromClass([vc class]) : @"nil");
+    } @catch (NSException *exception) {
+        // 某些版本可能没有这些 key，忽略
     }
+    
+    return identifier ?: @"";
 }
+
+// 过滤模块实例，从源头移除这两个模块
+%hook CCUIModuleInstanceManager
 
 - (NSArray *)moduleInstances {
     NSArray *original = %orig;
     NSMutableArray *filtered = [NSMutableArray arrayWithCapacity:original.count];
+    
     for (id instance in original) {
         NSString *identifier = identifierForInstance(instance);
-        if (shouldFilterIdentifier(identifier)) {
-            WriteDebug(@"[CCDebug] 已过滤 moduleInstances: %@", identifier);
+        if ([identifier containsString:@"RPCCAudio"] || [identifier containsString:@"RPCCVideo"]) {
             continue;
         }
         [filtered addObject:instance];
@@ -78,10 +35,10 @@ static BOOL shouldFilterIdentifier(NSString *identifier) {
 - (NSArray *)enabledModuleInstances {
     NSArray *original = %orig;
     NSMutableArray *filtered = [NSMutableArray arrayWithCapacity:original.count];
+    
     for (id instance in original) {
         NSString *identifier = identifierForInstance(instance);
-        if (shouldFilterIdentifier(identifier)) {
-            WriteDebug(@"[CCDebug] 已过滤 enabledModuleInstances: %@", identifier);
+        if ([identifier containsString:@"RPCCAudio"] || [identifier containsString:@"RPCCVideo"]) {
             continue;
         }
         [filtered addObject:instance];
@@ -91,57 +48,45 @@ static BOOL shouldFilterIdentifier(NSString *identifier) {
 
 %end
 
-// ========================================
-// Hook CCUIModuleInstance (备选)
-// ========================================
+// 可选：如果你觉得上面的方法在你的 iOS 版本上没生效，可以改为直接禁用模块实例
+/*
 %hook CCUIModuleInstance
 
 - (BOOL)isEnabled {
     NSString *identifier = identifierForInstance(self);
-    if (shouldFilterIdentifier(identifier)) {
-        WriteDebug(@"[CCDebug] 已禁用 isEnabled: %@", identifier);
+    if ([identifier containsString:@"RPCCAudio"] || [identifier containsString:@"RPCCVideo"]) {
+        return NO;
+    }
+    return %orig;
+}
+
+- (BOOL)enabled {
+    NSString *identifier = identifierForInstance(self);
+    if ([identifier containsString:@"RPCCAudio"] || [identifier containsString:@"RPCCVideo"]) {
         return NO;
     }
     return %orig;
 }
 
 %end
+*/
 
-// ========================================
-// Hook CCUIModuleCollectionViewController (兜底)
-// ========================================
-%hook CCUIModuleCollectionViewController
+// ========== 可选调试代码：打印当前所有模块标识符 ==========
+// 取消注释下面的代码，在第一次打开控制中心时会在控制台输出
+// 所有真实的模块 identifier，然后你就能准确判断需要过滤哪些字符串。
 
-- (void)_updateEnabledModuleIdentifiers {
+/*
+%hook CCUIModuleInstanceManager
+
+- (void)loadModules {
     %orig;
-    NSArray *children = [self.childViewControllers copy];
-    for (UIViewController *child in children) {
-        NSString *cls = NSStringFromClass([child class]);
-        if ([cls containsString:@"RPCCAudio"] || [cls containsString:@"RPCCVideo"]) {
-            [child.view removeFromSuperview];
-            [child removeFromParentViewController];
-            WriteDebug(@"[CCDebug] 已移除子控制器: %@", cls);
-        }
+    NSArray *instances = [self valueForKey:@"moduleInstances"];
+    for (id instance in instances) {
+        NSLog(@"[Tweak] CC Module: %@ -> %@",
+              identifierForInstance(instance),
+              [instance valueForKey:@"contentViewController"]);
     }
 }
 
 %end
-
-// ========================================
-// Hook CCUILayoutView (布局层兜底)
-// ========================================
-%hook CCUILayoutView
-
-- (void)layoutSubviews {
-    %orig;
-    for (UIView *sub in self.subviews) {
-        NSString *cls = NSStringFromClass([sub class]);
-        if ([cls containsString:@"RPCCAudio"] || [cls containsString:@"RPCCVideo"]) {
-            sub.frame = CGRectZero;
-            sub.hidden = YES;
-            WriteDebug(@"[CCDebug] 布局层已隐藏: %@", cls);
-        }
-    }
-}
-
-%end
+*/
