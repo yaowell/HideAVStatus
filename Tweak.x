@@ -1,4 +1,4 @@
-有问题？#import <UIKit/UIKit.h>
+#import <UIKit/UIKit.h>
 
 // 辅助函数：从任意模块实例中安全地取出标识符
 static NSString *identifierForInstance(id instance) {
