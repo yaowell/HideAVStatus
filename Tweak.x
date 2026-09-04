@@ -1,29 +1,43 @@
 #import <UIKit/UIKit.h>
 
-@interface CCUILayoutView : UIView
-- (id)layoutSource;
+@interface CCUILayoutOptions : NSObject
 @end
 
-%hook CCUILayoutView
+%hook CCUIModuleCollectionViewController
 
-- (void)layoutSubviews {
-    %orig;
+// 1. 过滤掉 topmost (音视频状态) 模块，避免分配顶部坐标
+- (id)topmostModuleIdentifier {
+    return nil;
+}
+
+// 2. 拦截协议中的边距计算：强制将顶部 Margin/Inset 清零
+- (UIEdgeInsets)compactLayoutMargins {
+    UIEdgeInsets insets = %orig;
+    insets.top = 0;
+    return insets;
+}
+
+- (UIEdgeInsets)expandedLayoutMargins {
+    UIEdgeInsets insets = %orig;
+    insets.top = 0;
+    return insets;
+}
+
+// 3. 拦截特定布局计算：清除顶部 Topmost 模块占用的 Frame 高度
+- (CGRect)layoutView:(id)layoutView frameForSubview:(UIView *)subview {
+    CGRect rect = %orig;
+    NSString *cls = NSStringFromClass([subview class]);
     
-    id source = [self layoutSource];
-    if (source) {
-        NSString *className = [NSString stringWithUTF8String:object_getClassName(source)];
-        NSString *logContent = [NSString stringWithFormat:@"layoutSource Class: %@\n", className];
-        
-        // 写入本地文件 /tmp/cc_debug.txt
-        NSFileHandle *fileHandle = [NSFileHandle fileHandleForWritingAtPath:@"/tmp/cc_debug.txt"];
-        if (fileHandle) {
-            [fileHandle seekToEndOfFile];
-            [fileHandle writeData:[logContent dataUsingEncoding:NSUTF8StringEncoding]];
-            [fileHandle closeFile];
-        } else {
-            [logContent writeToFile:@"/tmp/cc_debug.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];
-        }
+    // 如果是音视频相关模块，坐标直接清零
+    if ([cls containsString:@"AudioConference"] || 
+        [cls containsString:@"VideoConference"] || 
+        [cls containsString:@"Sensor"] ||
+        [cls containsString:@"ReplayKit"]) {
+        subview.hidden = YES;
+        return CGRectZero;
     }
+    
+    return rect;
 }
 
 %end
