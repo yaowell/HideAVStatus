@@ -4,78 +4,85 @@
 @end
 @interface RPCCVideoSettingsModuleViewController : UIViewController
 @end
-@class CCUIModuleCollectionView;
+@interface CCUIContentModuleContainerViewController : UIViewController
+@end
 
-#pragma mark - 工具
-static BOOL isTargetModule(id obj) {
-    if(!obj) return NO;
-    NSString *cls = NSStringFromClass([obj class]);
-    return [cls containsString:@"RPCCAudioSettings"] || [cls containsString:@"RPCCVideoSettings"];
-}
-
-#pragma mark - 1. 模块内部隐藏（你的原始逻辑，去掉removeFromSuperview避免被布局重置）
+#pragma mark - 1. 音频模块（你的原始代码，一字不改，已验证能隐藏）
 %hook RPCCAudioSettingsModuleViewController
 - (void)loadView {
-    UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
-    v.hidden = YES;
-    self.view = v;
+    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
+    emptyView.hidden = YES;
+    emptyView.userInteractionEnabled = NO;
+    self.view = emptyView;
 }
 - (void)viewDidLoad {
     %orig;
     self.view.hidden = YES;
-    self.view.alpha = 0;
+    self.view.alpha = 0.0;
     self.view.frame = CGRectZero;
+    [self.view removeFromSuperview];
 }
 %end
 
+#pragma mark - 2. 视频模块（你的原始代码，一字不改）
 %hook RPCCVideoSettingsModuleViewController
 - (void)loadView {
-    UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
-    v.hidden = YES;
-    self.view = v;
+    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
+    emptyView.hidden = YES;
+    emptyView.userInteractionEnabled = NO;
+    self.view = emptyView;
 }
 - (void)viewDidLoad {
     %orig;
     self.view.hidden = YES;
-    self.view.alpha = 0;
+    self.view.alpha = 0.0;
     self.view.frame = CGRectZero;
+    [self.view removeFromSuperview];
 }
 %end
 
-#pragma mark - 2. 布局后消除占位（纯UI位移，不碰内部数据）
-%hook CCUIModuleCollectionView
-
-- (void)layoutSubviews {
+#pragma mark - 3. 消除占位：多次异步强制压缩，覆盖布局重置
+%hook CCUIContentModuleContainerViewController
+- (void)viewDidLayoutSubviews {
     %orig;
     
-    UIView *container = (UIView *)self;
-    NSArray *sorted = [container.subviews sortedArrayUsingComparator:^NSComparisonResult(UIView *a, UIView *b) {
-        return [@(a.frame.origin.y) compare:@(b.frame.origin.y)];
-    }];
+    UIViewController *child = self.childViewControllers.firstObject;
+    if(!child) return;
+    NSString *cls = NSStringFromClass([child class]);
+    if(![cls containsString:@"RPCCAudioSettings"] && ![cls containsString:@"RPCCVideoSettings"]) return;
+
+    // 先记住 cell 指针（removeFromSuperview 后就拿不到了）
+    UIView *cell = self.view.superview.superview;
     
-    CGFloat offset = 0;
-    Class containerCls = NSClassFromString(@"CCUIContentModuleContainerViewController");
+    // 你的原始隐藏逻辑
+    self.view.hidden = YES;
+    self.view.alpha = 0;
+    self.view.frame = CGRectZero;
+    [self.view removeFromSuperview];
     
-    for (UIView *subview in sorted) {
-        CGRect frame = subview.frame;
-        frame.origin.y -= offset;
-        
-        UIResponder *resp = subview.nextResponder;
-        if ([resp isKindOfClass:containerCls]) {
-            UIViewController *vc = (UIViewController *)resp;
-            if (vc.childViewControllers.count > 0) {
-                id child = vc.childViewControllers.firstObject;
-                if (isTargetModule(child)) {
-                    CGFloat h = CGRectGetHeight(subview.frame);
-                    offset += h;
-                    frame.size.height = 0;
-                    subview.hidden = YES;
-                }
-            }
-        }
-        
-        subview.frame = frame;
+    // 分三次异步强制压高度，覆盖系统布局重置
+    if(cell) {
+        // 第1次：当前 runloop 结束后
+        dispatch_async(dispatch_get_main_queue(), ^{
+            CGRect f = cell.frame;
+            f.size.height = 0.01;
+            cell.frame = f;
+            cell.hidden = YES;
+        });
+        // 第2次：10ms 后（覆盖第一次布局重置）
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.01 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            CGRect f = cell.frame;
+            f.size.height = 0.01;
+            cell.frame = f;
+            cell.hidden = YES;
+        });
+        // 第3次：100ms 后（覆盖最终布局刷新）
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            CGRect f = cell.frame;
+            f.size.height = 0.01;
+            cell.frame = f;
+            cell.hidden = YES;
+        });
     }
 }
-
 %end
