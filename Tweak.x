@@ -1,17 +1,21 @@
 #import <UIKit/UIKit.h>
 
+// 1. 显式声明接口，防止编译警告和类型识别错误
 @interface CCUIModuleCollectionViewController : UIViewController
+- (NSString *)_topmostModuleIdentifier;
+- (id)topmostModuleView;
 @end
 
 %hook CCUIModuleCollectionViewController
 
-// 1. 当系统请求获取最顶部的模块 View 时，直接返回 nil（不渲染，零开销）
-- (id)topmostModuleView {
+// 2. 仅拦截 Getter 方法，直接返回 nil。
+// 拿着真实 ID 的查询全部返回 nil，系统就不会去触发顶部的布局分配。
+
+- (NSString *)_topmostModuleIdentifier {
     return nil;
 }
 
-// 2. 当系统尝试设置/更新 topmostModuleIdentifier 时，置为空
-- (id)_topmostModuleIdentifier {
+- (id)topmostModuleView {
     return nil;
 }
 
