@@ -11,7 +11,15 @@ static BOOL isTargetModule(id obj) {
     return [cls containsString:@"RPCCAudioSettings"] || [cls containsString:@"RPCCVideoSettings"];
 }
 
-#pragma mark - 1. 视图隐藏（你的原始逻辑，保留）
+static id getIvar(id obj, NSString *key) {
+    return [obj valueForKey:key];
+}
+
+static void setIvar(id obj, NSString *key, id val) {
+    [obj setValue:val forKey:key];
+}
+
+#pragma mark - 1. 视图隐藏
 %hook RPCCAudioSettingsModuleViewController
 - (void)loadView {
     UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
@@ -40,23 +48,23 @@ static BOOL isTargetModule(id obj) {
 }
 %end
 
-#pragma mark - 2. 数据源层：模块填充后过滤掉目标模块
+#pragma mark - 2. 数据源层：过滤模块实例
 %hook CCUIModuleCollectionViewController
 
 - (void)_populateModuleViewControllers {
     %orig;
     
-    id mgr = [self valueForKey:@"_moduleManager"];
+    id selfId = self;
+    id mgr = getIvar(selfId, @"_moduleManager");
     if(!mgr) return;
     
-    // 拿到所有模块实例
-    NSArray *instances = [mgr valueForKey:@"moduleInstances"];
+    NSArray *instances = getIvar(mgr, @"moduleInstances");
     if(!instances) return;
     
     NSMutableArray *filtered = [instances mutableCopy];
     BOOL changed = NO;
     for(id inst in [instances copy]) {
-        id vc = [inst valueForKey:@"viewController"];
+        id vc = getIvar(inst, @"viewController");
         if(isTargetModule(vc)) {
             [filtered removeObject:inst];
             changed = YES;
@@ -65,21 +73,19 @@ static BOOL isTargetModule(id obj) {
     }
     
     if(changed) {
-        [mgr setValue:filtered forKey:@"moduleInstances"];
-        // 触发重新布局
-        [self performSelector:@selector(_updateModuleControllers) withObject:nil afterDelay:0.01];
+        setIvar(mgr, @"moduleInstances", filtered);
+        [selfId performSelector:@selector(_updateModuleControllers) withObject:nil afterDelay:0.01];
     }
 }
 
 %end
 
-#pragma mark - 3. 布局层：目标模块大小强制归零
+#pragma mark - 3. 布局层：大小归零
 %hook CCUIModuleCollectionViewController
 
 - (CGSize)layoutView:(id)layoutView layoutSizeForSubview:(id)subview {
     CGSize size = %orig;
     
-    // 沿着子视图找内部控制器
     UIResponder *r = subview;
     while(r) {
         if([r isKindOfClass:[UIViewController class]]) {
@@ -92,8 +98,8 @@ static BOOL isTargetModule(id obj) {
         r = r.nextResponder;
     }
     
-    // 再找容器里的子控制器
-    if([r isKindOfClass:NSClassFromString(@"CCUIContentModuleContainerViewController")]) {
+    Class containerCls = NSClassFromString(@"CCUIContentModuleContainerViewController");
+    if([r isKindOfClass:containerCls]) {
         id child = [(UIViewController *)r childViewControllers].firstObject;
         if(isTargetModule(child)) {
             NSLog(@"[HideAV] 容器布局大小归零: %@", NSStringFromClass([child class]));
