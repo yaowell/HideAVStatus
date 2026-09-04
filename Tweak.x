@@ -2,31 +2,31 @@
 
 %hook CCUIModuleCollectionViewController
 
-// 1. 拦截模块 Identifier 数组：遇到音视频/传感器模块直接剔除
-- (void)setModuleIdentifiers:(NSArray *)identifiers {
-    NSMutableArray *filtered = [NSMutableArray array];
-    for (NSString *identifier in identifiers) {
-        if (![identifier containsString:@"AudioConference"] && 
-            ![identifier containsString:@"VideoConference"] && 
-            ![identifier containsString:@"Sensor"] &&
-            ![identifier containsString:@"ReplayKit"] &&
-            ![identifier containsString:@"Topmost"]) {
-            [filtered addObject:identifier];
-        }
-    }
-    %orig([filtered copy]);
-}
-
-// 2. 拦截单个模块注入
+// 1. 从源头拒绝加载这两个模块的 Controller
 - (void)addModuleWithIdentifier:(NSString *)identifier {
-    if ([identifier containsString:@"AudioConference"] || 
-        [identifier containsString:@"VideoConference"] || 
-        [identifier containsString:@"Sensor"] ||
-        [identifier containsString:@"ReplayKit"] ||
-        [identifier containsString:@"Topmost"]) {
-        return; // 直接拦截，拒绝加载
+    if ([identifier containsString:@"MicMode"] || 
+        [identifier containsString:@"CameraVideoEffect"] || 
+        [identifier containsString:@"VideoEffect"] ||
+        [identifier containsString:@"AVControls"]) {
+        return; // 直接拦截
     }
     %orig;
+}
+
+// 2. 拦截 View 层，确保无论何时出现直接隐形并清除高度
+- (CGRect)layoutView:(id)layoutView frameForSubview:(UIView *)subview {
+    CGRect rect = %orig;
+    NSString *cls = NSStringFromClass([subview class]);
+    
+    if ([cls containsString:@"MicMode"] || 
+        [cls containsString:@"CameraVideoEffect"] || 
+        [cls containsString:@"VideoEffect"] ||
+        [cls containsString:@"OverlayHeader"]) {
+        subview.hidden = YES;
+        return CGRectZero;
+    }
+    
+    return rect;
 }
 
 %end
