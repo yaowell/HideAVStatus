@@ -1,22 +1,31 @@
 #import <UIKit/UIKit.h>
 
-// 1. 显式声明接口，防止编译警告和类型识别错误
 @interface CCUIModuleCollectionViewController : UIViewController
-- (NSString *)_topmostModuleIdentifier;
-- (id)topmostModuleView;
+@property (nonatomic, copy) NSArray *moduleIdentifiers;
 @end
 
 %hook CCUIModuleCollectionViewController
 
-// 2. 仅拦截 Getter 方法，直接返回 nil。
-// 拿着真实 ID 的查询全部返回 nil，系统就不会去触发顶部的布局分配。
-
-- (NSString *)_topmostModuleIdentifier {
-    return nil;
+// 1. 从数据源层彻底剔除这两个 ID，防止控制中心为其分配顶部 Grid 空间
+- (void)setModuleIdentifiers:(NSArray *)moduleIdentifiers {
+    NSMutableArray *filtered = [NSMutableArray array];
+    for (NSString *identifier in moduleIdentifiers) {
+        if (![identifier containsString:@"AudioConferenceControlCenter"] &&
+            ![identifier containsString:@"VideoConferenceControlCenter"]) {
+            [filtered addObject:identifier];
+        }
+    }
+    %orig([filtered copy]);
 }
 
-- (id)topmostModuleView {
-    return nil;
+// 2. 安全拦截：阻断顶部 Module 的初始化绑定，如果遇到直接返回 orig 的空处理而非 nil，防止解引用崩溃
+- (id)_setupAndAddModuleViewControllerToHierarchy:(id)moduleViewController {
+    NSString *desc = [moduleViewController description];
+    if ([desc containsString:@"AudioConferenceControlCenter"] ||
+        [desc containsString:@"VideoConferenceControlCenter"]) {
+        return nil; // 如果这一步触发 Safe Mode，只需注释掉此函数即可
+    }
+    return %orig;
 }
 
 %end
