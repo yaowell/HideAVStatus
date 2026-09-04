@@ -6,68 +6,85 @@
 @interface RPCCVideoSettingsModuleViewController : UIViewController
 @end
 
-@interface CCUIContentModuleContainerViewController : UIViewController
-@end
-
-// 1. 隐藏音频模块（你的原始代码，一字不改）
+#pragma mark - 1. 隐藏音频模块
 %hook RPCCAudioSettingsModuleViewController
 - (void)loadView {
-    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
-    emptyView.hidden = YES;
-    emptyView.userInteractionEnabled = NO;
-    self.view = emptyView;
+    UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
+    v.hidden = YES;
+    v.userInteractionEnabled = NO;
+    self.view = v;
 }
 - (void)viewDidLoad {
     %orig;
     self.view.hidden = YES;
-    self.view.alpha = 0.0;
+    self.view.alpha = 0;
     self.view.frame = CGRectZero;
-    [self.view removeFromSuperview];
 }
+- (CGSize)preferredContentSize { return CGSizeZero; }
 %end
 
-// 2. 隐藏视频模块（你的原始代码，一字不改）
+#pragma mark - 2. 隐藏视频模块
 %hook RPCCVideoSettingsModuleViewController
 - (void)loadView {
-    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
-    emptyView.hidden = YES;
-    emptyView.userInteractionEnabled = NO;
-    self.view = emptyView;
+    UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
+    v.hidden = YES;
+    v.userInteractionEnabled = NO;
+    self.view = v;
 }
 - (void)viewDidLoad {
     %orig;
     self.view.hidden = YES;
-    self.view.alpha = 0.0;
+    self.view.alpha = 0;
     self.view.frame = CGRectZero;
-    [self.view removeFromSuperview];
 }
+- (CGSize)preferredContentSize { return CGSizeZero; }
 %end
 
-// 3. 消除占位：只加了往上压缩 cell 高度的逻辑
-%hook CCUIContentModuleContainerViewController
-- (void)viewWillLayoutSubviews {
+#pragma mark - 3. 核心：collectionView 每次布局后强制压缩目标 cell
+%hook UICollectionView
+- (void)layoutSubviews {
     %orig;
-    if (self.childViewControllers.count > 0) {
-        NSString *childCls = NSStringFromClass([self.childViewControllers.firstObject class]);
-        if ([childCls containsString:@"RPCCAudioSettings"] ||
-            [childCls containsString:@"RPCCVideoSettings"]) {
 
-            // 先记住上层视图（removeFromSuperview 后就拿不到了）
-            UIView *sv = self.view.superview;
-
-            // 你原来的隐藏逻辑
-            self.view.hidden = YES;
-            self.view.alpha = 0.0;
-            self.view.frame = CGRectZero;
-            [self.view removeFromSuperview];
-
-            // 新增：把 cell 和更上层的高度全部压成 0
-            for (int i = 0; sv && i < 4; i++) {
-                CGRect f = sv.frame;
-                f.size.height = 0;
-                sv.frame = f;
-                sv = sv.superview;
+    // 只处理控制中心的 collectionView
+    NSString *cvCls = NSStringFromClass(self.class);
+    BOOL isCC = [cvCls containsString:@"CCUI"];
+    if(!isCC) {
+        UIResponder *r = self.nextResponder;
+        while(r) {
+            if([NSStringFromClass([r class]) containsString:@"CCUIModule"]) {
+                isCC = YES; break;
             }
+            r = r.nextResponder;
+        }
+    }
+    if(!isCC) return;
+
+    // 遍历可见 cell，通过响应链找包含 RPCC 模块的 cell
+    for(UICollectionViewCell *cell in self.visibleCells) {
+        UIResponder *resp = cell;
+        BOOL hit = NO;
+        while(resp) {
+            if([resp isKindOfClass:[UIViewController class]]) {
+                NSString *rcls = NSStringFromClass([resp class]);
+                if([rcls containsString:@"RPCCAudio"] || [rcls containsString:@"RPCCVideo"]) {
+                    hit = YES; break;
+                }
+                for(id ch in [(UIViewController *)resp childViewControllers]) {
+                    NSString *ccls = NSStringFromClass([ch class]);
+                    if([ccls containsString:@"RPCCAudio"] || [ccls containsString:@"RPCCVideo"]) {
+                        hit = YES; break;
+                    }
+                }
+                if(hit) break;
+            }
+            resp = resp.nextResponder;
+        }
+        if(hit) {
+            CGRect f = cell.frame;
+            f.size.height = 0;
+            cell.frame = f;
+            cell.hidden = YES;
+            cell.alpha = 0;
         }
     }
 }
