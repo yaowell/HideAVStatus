@@ -1,64 +1,44 @@
 #import <UIKit/UIKit.h>
 
-@interface RPCCAudioSettingsModuleViewController : UIViewController
+@interface CCUIContentModuleContainerView : UIView
+@property (nonatomic, copy, readonly) NSString *moduleIdentifier;
 @end
-@interface RPCCVideoSettingsModuleViewController : UIViewController
-@end
-@class CCUIModuleInstanceManager;
 
-#pragma mark - 工具
-static BOOL isTargetModule(id obj) {
-    if(!obj) return NO;
-    NSString *cls = NSStringFromClass([obj class]);
-    return [cls containsString:@"RPCCAudioSettings"] || [cls containsString:@"RPCCVideoSettings"];
-}
+// 1. 阻止 ContainerView 本身被设置尺寸或显示
+%hook CCUIContentModuleContainerView
 
-#pragma mark - 1. 视图隐藏兜底
-%hook RPCCAudioSettingsModuleViewController
-- (void)loadView {
-    UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
-    v.hidden = YES;
-    self.view = v;
-}
-- (void)viewDidLoad {
-    %orig;
-    self.view.hidden = YES;
-    self.view.alpha = 0;
-    [self.view removeFromSuperview];
-}
-%end
-
-%hook RPCCVideoSettingsModuleViewController
-- (void)loadView {
-    UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
-    v.hidden = YES;
-    self.view = v;
-}
-- (void)viewDidLoad {
-    %orig;
-    self.view.hidden = YES;
-    self.view.alpha = 0;
-    [self.view removeFromSuperview];
-}
-%end
-
-#pragma mark - 2. 根源消除：模块实例 getter 过滤，布局系统直接看不到
-%hook CCUIModuleInstanceManager
-
-- (id)moduleInstances {
-    NSArray *original = %orig;
-    if(!original) return original;
-    
-    NSMutableArray *filtered = [original mutableCopy];
-    BOOL changed = NO;
-    for (id inst in [original copy]) {
-        id vc = [inst valueForKey:@"viewController"];
-        if (isTargetModule(vc)) {
-            [filtered removeObject:inst];
-            changed = YES;
-        }
+- (void)setFrame:(CGRect)frame {
+    if (self.moduleIdentifier && ([self.moduleIdentifier containsString:@"audio"] || 
+                                  [self.moduleIdentifier containsString:@"video"] || 
+                                  [self.moduleIdentifier containsString:@"Privacy"] ||
+                                  [self.moduleIdentifier containsString:@"ReplayKit"])) {
+        %orig(CGRectZero);
+        self.hidden = YES;
+        return;
     }
-    return changed ? filtered : original;
+    %orig;
+}
+
+- (void)layoutSubviews {
+    if (self.moduleIdentifier && ([self.moduleIdentifier containsString:@"audio"] || 
+                                  [self.moduleIdentifier containsString:@"video"] || 
+                                  [self.moduleIdentifier containsString:@"Privacy"] ||
+                                  [self.moduleIdentifier containsString:@"ReplayKit"])) {
+        self.hidden = YES;
+        self.frame = CGRectZero;
+        return;
+    }
+    %orig;
+}
+
+%end
+
+// 2. 拦截 CollectionView 数据源（彻底不给它生成或计算 Cell 空间）
+%hook CCUIModuleCollectionViewController
+
+- (CGSize)collectionView:(id)cv layout:(id)l sizeForItemAtIndexPath:(NSIndexPath *)indexPath {
+    // 如果是目标模块直接返回 0 尺寸
+    return %orig; 
 }
 
 %end
