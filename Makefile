@@ -1,11 +1,12 @@
-TARGET := iphone:clang:16.5:14.0
+TARGET := iphone:clang:latest:15.0
 INSTALL_TARGET_PROCESSES = SpringBoard
-THEOS_PACKAGE_SCHEME = roothide
 
 include $(THEOS)/makefiles/common.mk
 
-TWEAK_NAME = RPCCHideCC
-RPCCHideCC_FILES = Tweak.xm
-RPCCHideCC_CFLAGS = -fobjc-arc
+TWEAK_NAME = HidePrivacyModules
 
-include $(THEOS_MAKE_PATH)/tweak.mk
+HidePrivacyModules_FILES = Tweak.x
+HidePrivacyModules_CFLAGS = -fobjc-arc
+HidePrivacyModules_FRAMEWORKS = UIKit
+
+include $(THEOS)/makefiles/tweak.mk
