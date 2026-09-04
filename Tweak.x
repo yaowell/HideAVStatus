@@ -6,19 +6,12 @@
 @interface RPCCVideoSettingsModuleViewController : UIViewController
 @end
 
-@interface CCUIContentModuleContainerViewController : UIViewController
-@end
-
-// 1. 保留你验证有效的 loadView 剥离逻辑
+// 1. 彻底干掉 VC 视图
 %hook RPCCAudioSettingsModuleViewController
 - (void)loadView {
     UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
     v.hidden = YES;
     self.view = v;
-}
-- (void)viewDidLoad {
-    %orig;
-    [self.view removeFromSuperview];
 }
 %end
 
@@ -28,42 +21,58 @@
     v.hidden = YES;
     self.view = v;
 }
-- (void)viewDidLoad {
-    %orig;
-    [self.view removeFromSuperview];
-}
 %end
 
-// 2.【精准对位 FLEX】：沿视图树找到 UICollectionViewCell，强行压扁 frame 消除占位
-%hook CCUIContentModuleContainerViewController
+// 2.【核心】重写 CollectionView Layout，从布局计算层直接剔除卡片并重新排列 Y 轴
+%hook UICollectionViewLayout
 
-- (void)viewWillLayoutSubviews {
-    %orig;
-    UIViewController *vc = (UIViewController *)self;
-    if (vc.childViewControllers.count > 0) {
-        NSString *childCls = NSStringFromClass([vc.childViewControllers.firstObject class]);
-        if ([childCls containsString:@"RPCCAudioSettings"] || 
-            [childCls containsString:@"RPCCVideoSettings"]) {
-            
-            // 隐藏并清空 VC 本身的 view
-            vc.view.hidden = YES;
-            vc.view.alpha = 0.0;
-            vc.view.frame = CGRectZero;
-            [vc.view removeFromSuperview];
-            
-            // 向上寻找装载这个 VC 的 UICollectionViewCell，直接将 Cell 尺寸砍成 0
-            UIView *parent = vc.view.superview;
-            while (parent != nil) {
-                if ([parent isKindOfClass:NSClassFromString(@"UICollectionViewCell")]) {
-                    parent.hidden = YES;
-                    parent.frame = CGRectZero;
-                    parent.bounds = CGRectZero;
-                    break;
+- (NSArray<UICollectionViewLayoutAttributes *> *)layoutAttributesForElementsInRect:(CGRect)rect {
+    NSArray<UICollectionViewLayoutAttributes *> *attributes = %orig(rect);
+    if (!attributes) return nil;
+
+    NSMutableArray *newAttributes = [NSMutableArray array];
+    CGFloat offsetYToReduce = 0.0;
+
+    for (UICollectionViewLayoutAttributes *attr in attributes) {
+        // 判断当前 LayoutAttributes 是否属于音视频卡片
+        UICollectionViewCell *cell = [self.collectionView cellForItemAtIndexPath:attr.indexPath];
+        BOOL isAVModule = NO;
+
+        if (cell) {
+            UIResponder *responder = cell;
+            while (responder) {
+                if ([responder isKindOfClass:[UIViewController class]]) {
+                    NSString *cls = NSStringFromClass([responder class]);
+                    if ([cls containsString:@"RPCCAudio"] || [cls containsString:@"RPCCVideo"]) {
+                        isAVModule = YES;
+                        break;
+                    }
                 }
-                parent = parent.superview;
+                responder = [responder nextResponder];
             }
         }
+
+        if (isAVModule) {
+            // 记录被隐藏模块占用的高度，后续所有图标统一上移该高度
+            if (offsetYToReduce == 0.0) {
+                offsetYToReduce = attr.frame.size.height + 10.0; // 包含模块间距
+            }
+            continue; // 直接从布局数组里扔掉这两个卡片
+        }
+
+        // 如果已经触发了偏移，将后续所有图标的 Frame Y 轴向上移动
+        if (offsetYToReduce > 0.0) {
+            UICollectionViewLayoutAttributes *copyAttr = [attr copy];
+            CGRect f = copyAttr.frame;
+            f.origin.y -= offsetYToReduce;
+            copyAttr.frame = f;
+            [newAttributes addObject:copyAttr];
+        } else {
+            [newAttributes addObject:attr];
+        }
     }
+
+    return newAttributes;
 }
 
 %end
