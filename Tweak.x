@@ -1,12 +1,16 @@
 #import <UIKit/UIKit.h>
 
+// 明确继承自 UIViewController，解开 childViewControllers 和 view 属性
+@interface CCUIContentModuleContainerViewController : UIViewController
+@end
+
 @interface RPCCAudioSettingsModuleViewController : UIViewController
 @end
 
 @interface RPCCVideoSettingsModuleViewController : UIViewController
 @end
 
-// 1. 保留你验证成功的子 VC 视图剥离
+// 1. 保持子 VC 的 View 剥离与尺寸归零
 %hook RPCCAudioSettingsModuleViewController
 - (void)loadView {
     UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
@@ -29,16 +33,15 @@
 }
 %end
 
-// 2.【核心】：Hook 包裹它们的父容器 VC，让容器占用的物理尺寸直接归零
+// 2. 将容器 VC 的尺寸和视图同步归零，让 AutoLayout 放弃留白
 %hook CCUIContentModuleContainerViewController
 
 - (CGSize)preferredContentSize {
-    // 检查这个容器里装的是不是音视频 VC
     if (self.childViewControllers.count > 0) {
         UIViewController *child = self.childViewControllers.firstObject;
         NSString *cls = NSStringFromClass([child class]);
         if ([cls containsString:@"RPCCAudio"] || [cls containsString:@"RPCCVideo"]) {
-            return CGSizeZero; // 告诉网格引擎：我的尺寸是 0，不要给我留位子
+            return CGSizeZero;
         }
     }
     return %orig;
