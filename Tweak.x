@@ -4,7 +4,7 @@
 @end
 @interface RPCCVideoSettingsModuleViewController : UIViewController
 @end
-@class CCUIModuleCollectionViewController;
+@class CCUIModuleCollectionView;
 
 #pragma mark - 工具
 static BOOL isTargetModule(id obj) {
@@ -13,15 +13,7 @@ static BOOL isTargetModule(id obj) {
     return [cls containsString:@"RPCCAudioSettings"] || [cls containsString:@"RPCCVideoSettings"];
 }
 
-static BOOL containsTarget(id container) {
-    if(!container) return NO;
-    if(isTargetModule(container)) return YES;
-    NSArray *ch = [container valueForKey:@"childViewControllers"];
-    for(id c in ch) if(isTargetModule(c)) return YES;
-    return NO;
-}
-
-#pragma mark - 视图隐藏兜底
+#pragma mark - 1. 模块内部隐藏（兜底）
 %hook RPCCAudioSettingsModuleViewController
 - (void)loadView {
     UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
@@ -50,22 +42,40 @@ static BOOL containsTarget(id container) {
 }
 %end
 
-#pragma mark - 核心：创建后立刻用系统原生方法移除
-%hook CCUIModuleCollectionViewController
+#pragma mark - 2. 核心：布局后消除占位（纯UI操作，不碰内部数据）
+%hook CCUIModuleCollectionView
 
-- (id)_setupAndAddModuleViewControllerToHierarchy:(id)viewController {
-    id result = %orig(viewController);
-    id selfId = self;
+- (void)layoutSubviews {
+    %orig;
     
-    if(containsTarget(result)) {
-        NSLog(@"[HideAV] 移除模块: %@", NSStringFromClass([result class]));
-        SEL removeSel = NSSelectorFromString(@"_removeAndTearDownModuleViewControllerFromHierarchy:");
-        if([selfId respondsToSelector:removeSel]) {
-            [selfId performSelector:removeSel withObject:result afterDelay:0.0];
+    // 按垂直位置排序所有模块
+    NSArray *sorted = [self.subviews sortedArrayUsingComparator:^NSComparisonResult(UIView *a, UIView *b) {
+        return [@(a.frame.origin.y) compare:@(b.frame.origin.y)];
+    }];
+    
+    CGFloat offset = 0;
+    for (UIView *subview in sorted) {
+        CGRect frame = subview.frame;
+        frame.origin.y -= offset;
+        
+        // 识别目标模块容器
+        BOOL isTarget = NO;
+        UIResponder *resp = subview.nextResponder;
+        if ([resp isKindOfClass:NSClassFromString(@"CCUIContentModuleContainerViewController")]) {
+            UIViewController *container = (UIViewController *)resp;
+            if (container.childViewControllers.count > 0) {
+                id child = container.childViewControllers.firstObject;
+                if (isTargetModule(child)) {
+                    isTarget = YES;
+                    offset += CGRectGetHeight(subview.frame);
+                    frame.size.height = 0;
+                    subview.hidden = YES;
+                }
+            }
         }
+        
+        subview.frame = frame;
     }
-    
-    return result;
 }
 
 %end
