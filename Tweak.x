@@ -1,65 +1,122 @@
 #import <UIKit/UIKit.h>
 
-@protocol CCUIContentModule <NSObject>
-@end
+#pragma mark - 工具函数：判断是否是目标模块
+static BOOL isTargetModule(id obj) {
+    if(!obj) return NO;
+    id inner = nil;
+    @try { inner = [obj valueForKeyPath:@"childViewControllers.firstObject"]; }
+    @catch(NSException *e) {}
+    if(!inner) inner = obj;
+    NSString *cls = NSStringFromClass([inner class]);
+    return [cls containsString:@"RPCCAudioSettings"] ||
+           [cls containsString:@"RPCCVideoSettings"];
+}
 
-%hook CCUIContentModuleContainerViewController
+#pragma mark - 第一层：拦截数据源 setter（最干净，从数组里删掉）
+%hook CCUIModuleCollectionViewController
 
-- (id<CCUIContentModule>)contentModule {
-    id selfId = self;
-    id childVc = [selfId childViewControllers].firstObject;
-    if(childVc) {
-        NSString *cls = NSStringFromClass([childVc class]);
-        if ([cls isEqualToString:@"RPCCAudioSettingsModuleViewController"] ||
-            [cls isEqualToString:@"RPCCVideoSettingsModuleViewController"]) {
-            return nil;
+- (void)setModuleContainerViewControllers:(NSArray *)controllers {
+    NSMutableArray *filtered = [NSMutableArray array];
+    for(id obj in controllers) {
+        if(isTargetModule(obj)) {
+            NSLog(@"[HideAV] [Layer1] filtered: %@", NSStringFromClass([obj class]));
+            continue;
         }
+        [filtered addObject:obj];
     }
-    return %orig;
+    %orig(filtered);
+}
+
+// 兼容下划线命名的版本
+- (void)set_moduleContainerViewControllers:(NSArray *)controllers {
+    NSMutableArray *filtered = [NSMutableArray array];
+    for(id obj in controllers) {
+        if(isTargetModule(obj)) {
+            NSLog(@"[HideAV] [Layer1b] filtered: %@", NSStringFromClass([obj class]));
+            continue;
+        }
+        [filtered addObject:obj];
+    }
+    %orig(filtered);
+}
+
+#pragma mark - 第二层：viewWillAppear 兜底（直接改数组 + reload）
+- (void)viewWillAppear:(BOOL)animated {
+    %orig;
+    id selfId = self;
+    NSArray *keys = @[
+        @"moduleContainerViewControllers",
+        @"_moduleContainerViewControllers",
+        @"moduleContainers",
+        @"_moduleContainers"
+    ];
+    for(NSString *key in keys) {
+        @try {
+            id val = [selfId valueForKey:key];
+            if([val isKindOfClass:[NSArray class]]) {
+                NSMutableArray *arr = [val mutableCopy];
+                BOOL changed = NO;
+                for(id obj in [arr copy]) {
+                    if(isTargetModule(obj)) {
+                        [arr removeObject:obj];
+                        changed = YES;
+                        NSLog(@"[HideAV] [Layer2] removed via '%@': %@", key, NSStringFromClass([obj class]));
+                    }
+                }
+                if(changed) {
+                    [selfId setValue:arr forKey:key];
+                    UICollectionView *cv = [selfId valueForKey:@"collectionView"];
+                    if(cv) [cv reloadData];
+                }
+                break;
+            }
+        } @catch(NSException *e) {}
+    }
 }
 
 %end
 
+#pragma mark - 第三层：Layout 兜底（size 强制归零，消除占位）
 %hook CCUIModuleCollectionViewLayout
 
 - (NSArray<UICollectionViewLayoutAttributes *> *)layoutAttributesForElementsInRect:(CGRect)rect {
-    NSArray *attrsArr = %orig;
-    NSMutableArray *final = [NSMutableArray array];
-    Class containerClass = NSClassFromString(@"CCUIContentModuleContainerViewController");
-    Class collVcClass = NSClassFromString(@"CCUIModuleCollectionViewController");
-
+    NSArray *attrs = %orig;
     id selfId = self;
     UICollectionView *cv = [selfId valueForKey:@"collectionView"];
-    id delegateObj = cv.delegate;
+    if(!cv) return attrs;
+    id dataSource = cv.dataSource;
+    if(!dataSource) return attrs;
 
-    for(UICollectionViewLayoutAttributes *attr in attrsArr) {
-        if(![delegateObj isKindOfClass:collVcClass]){
-            [final addObject:attr];
-            continue;
-        }
-        NSArray *containers = [delegateObj valueForKeyPath:@"moduleContainerViewControllers"];
-        if(attr.indexPath.item >= containers.count) {
-            [final addObject:attr];
-            continue;
-        }
-        id containerObj = containers[attr.indexPath.item];
-        if(![containerObj isKindOfClass:containerClass]){
-            [final addObject:attr];
-            continue;
-        }
-        id inner = [containerObj childViewControllers].firstObject;
-        if(!inner) {
-            [final addObject:attr];
-            continue;
-        }
-        NSString *innerCls = NSStringFromClass([inner class]);
-        if([innerCls isEqualToString:@"RPCCAudioSettingsModuleViewController"] ||
-           [innerCls isEqualToString:@"RPCCVideoSettingsModuleViewController"]){
-            continue;
-        }
-        [final addObject:attr];
+    NSMutableArray *result = [NSMutableArray array];
+    for(UICollectionViewLayoutAttributes *attr in attrs) {
+        @try {
+            UICollectionViewCell *cell = [dataSource collectionView:cv cellForItemAtIndexPath:attr.indexPath];
+            id contentVc = [cell valueForKeyPath:@"contentViewController"];
+            if(!contentVc) contentVc = [cell valueForKeyPath:@"_contentViewController"];
+            if(isTargetModule(contentVc)) {
+                UICollectionViewLayoutAttributes *newAttr = [attr copy];
+                newAttr.size = CGSizeZero;
+                newAttr.alpha = 0;
+                newAttr.hidden = YES;
+                [result addObject:newAttr];
+                NSLog(@"[HideAV] [Layer3] zero-size at %@", attr.indexPath);
+                continue;
+            }
+        } @catch(NSException *e) {}
+        [result addObject:attr];
     }
-    return final;
+    return result;
 }
 
+%end
+
+#pragma mark - 第四层：模块自身兜底（让模块大小为0 + 隐藏）
+%hook RPCCAudioSettingsModuleViewController
+- (CGSize)preferredContentSize { return CGSizeZero; }
+- (void)viewDidLoad { %orig; self.view.hidden = YES; self.view.alpha = 0; }
+%end
+
+%hook RPCCVideoSettingsModuleViewController
+- (CGSize)preferredContentSize { return CGSizeZero; }
+- (void)viewDidLoad { %orig; self.view.hidden = YES; self.view.alpha = 0; }
 %end
