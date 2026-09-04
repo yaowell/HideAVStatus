@@ -13,7 +13,7 @@ static BOOL isTargetModule(id obj) {
     return [cls containsString:@"RPCCAudioSettings"] || [cls containsString:@"RPCCVideoSettings"];
 }
 
-#pragma mark - 1. 模块内部隐藏
+#pragma mark - 1. 模块内部隐藏（你的原始逻辑，去掉removeFromSuperview避免被布局重置）
 %hook RPCCAudioSettingsModuleViewController
 - (void)loadView {
     UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
@@ -24,7 +24,7 @@ static BOOL isTargetModule(id obj) {
     %orig;
     self.view.hidden = YES;
     self.view.alpha = 0;
-    [self.view removeFromSuperview];
+    self.view.frame = CGRectZero;
 }
 %end
 
@@ -38,34 +38,36 @@ static BOOL isTargetModule(id obj) {
     %orig;
     self.view.hidden = YES;
     self.view.alpha = 0;
-    [self.view removeFromSuperview];
+    self.view.frame = CGRectZero;
 }
 %end
 
-#pragma mark - 2. 布局后消除占位（纯UI操作）
+#pragma mark - 2. 布局后消除占位（纯UI位移，不碰内部数据）
 %hook CCUIModuleCollectionView
 
 - (void)layoutSubviews {
     %orig;
     
-    UIView *view = (UIView *)self;
-    NSArray *sorted = [view.subviews sortedArrayUsingComparator:^NSComparisonResult(UIView *a, UIView *b) {
+    UIView *container = (UIView *)self;
+    NSArray *sorted = [container.subviews sortedArrayUsingComparator:^NSComparisonResult(UIView *a, UIView *b) {
         return [@(a.frame.origin.y) compare:@(b.frame.origin.y)];
     }];
     
     CGFloat offset = 0;
+    Class containerCls = NSClassFromString(@"CCUIContentModuleContainerViewController");
+    
     for (UIView *subview in sorted) {
         CGRect frame = subview.frame;
         frame.origin.y -= offset;
         
         UIResponder *resp = subview.nextResponder;
-        Class containerCls = NSClassFromString(@"CCUIContentModuleContainerViewController");
         if ([resp isKindOfClass:containerCls]) {
-            UIViewController *container = (UIViewController *)resp;
-            if (container.childViewControllers.count > 0) {
-                id child = container.childViewControllers.firstObject;
+            UIViewController *vc = (UIViewController *)resp;
+            if (vc.childViewControllers.count > 0) {
+                id child = vc.childViewControllers.firstObject;
                 if (isTargetModule(child)) {
-                    offset += CGRectGetHeight(subview.frame);
+                    CGFloat h = CGRectGetHeight(subview.frame);
+                    offset += h;
                     frame.size.height = 0;
                     subview.hidden = YES;
                 }
