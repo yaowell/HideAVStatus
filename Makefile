@@ -3,10 +3,10 @@ INSTALL_TARGET_PROCESSES = SpringBoard
 
 include $(THEOS)/makefiles/common.mk
 
-TWEAK_NAME = HidePrivacyModules
+TWEAK_NAME = HideAVControls
 
-HidePrivacyModules_FILES = Tweak.x
-HidePrivacyModules_CFLAGS = -fobjc-arc
-HidePrivacyModules_FRAMEWORKS = UIKit
+HideAVControls_FILES = Tweak.x
+HideAVControls_CFLAGS = -fobjc-arc
+HideAVControls_FRAMEWORKS = UIKit
 
 include $(THEOS)/makefiles/tweak.mk
