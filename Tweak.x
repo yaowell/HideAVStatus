@@ -1,25 +1,24 @@
 #import <UIKit/UIKit.h>
 
-// 补充接口声明，让编译器知道它们继承自 UIViewController（拥有 view 属性）
 @interface RPCCAudioSettingsModuleViewController : UIViewController
 @end
 
 @interface RPCCVideoSettingsModuleViewController : UIViewController
 @end
 
-@interface CCUIModuleCollectionViewController : UIViewController
+@interface CCUIContentModuleContainerViewController : UIViewController
 @end
 
-@interface SBUISA_systemApertureLayoutGuide : NSObject
-- (CGRect)layoutFrame;
-@end
-
-// 1. 彻底拦截 VC 的生命周期，禁止视图装载
+// 1. 保留你验证有效的 loadView 剥离逻辑
 %hook RPCCAudioSettingsModuleViewController
 - (void)loadView {
     UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
     v.hidden = YES;
     self.view = v;
+}
+- (void)viewDidLoad {
+    %orig;
+    [self.view removeFromSuperview];
 }
 %end
 
@@ -27,26 +26,44 @@
 - (void)loadView {
     UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
     v.hidden = YES;
+    self.view = v;
 }
-%end
-
-// 2.【核心】：直接禁止控制中心把这两个 VC 注册进模块列表，从根源清空 Item 占位
-%hook CCUIModuleCollectionViewController
-
-- (void)addChildViewController:(UIViewController *)childController {
-    NSString *cls = NSStringFromClass([childController class]);
-    // 只要是音视频卡片的 VC，拒绝加入容器
-    if ([cls containsString:@"RPCCAudio"] || [cls containsString:@"RPCCVideo"]) {
-        return;
-    }
+- (void)viewDidLoad {
     %orig;
+    [self.view removeFromSuperview];
 }
-
 %end
 
-// 3. 辅助防线：干掉灵动岛/SystemAperture 动态卡片的布局引导线
-%hook SBUISA_systemApertureLayoutGuide
-- (CGRect)layoutFrame {
-    return CGRectZero;
+// 2.【精准对位 FLEX】：沿视图树找到 UICollectionViewCell，强行压扁 frame 消除占位
+%hook CCUIContentModuleContainerViewController
+
+- (void)viewWillLayoutSubviews {
+    %orig;
+    UIViewController *vc = (UIViewController *)self;
+    if (vc.childViewControllers.count > 0) {
+        NSString *childCls = NSStringFromClass([vc.childViewControllers.firstObject class]);
+        if ([childCls containsString:@"RPCCAudioSettings"] || 
+            [childCls containsString:@"RPCCVideoSettings"]) {
+            
+            // 隐藏并清空 VC 本身的 view
+            vc.view.hidden = YES;
+            vc.view.alpha = 0.0;
+            vc.view.frame = CGRectZero;
+            [vc.view removeFromSuperview];
+            
+            // 向上寻找装载这个 VC 的 UICollectionViewCell，直接将 Cell 尺寸砍成 0
+            UIView *parent = vc.view.superview;
+            while (parent != nil) {
+                if ([parent isKindOfClass:NSClassFromString(@"UICollectionViewCell")]) {
+                    parent.hidden = YES;
+                    parent.frame = CGRectZero;
+                    parent.bounds = CGRectZero;
+                    break;
+                }
+                parent = parent.superview;
+            }
+        }
+    }
 }
+
 %end
