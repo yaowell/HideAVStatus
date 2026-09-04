@@ -7,7 +7,7 @@
 @interface CCUIContentModuleContainerViewController : UIViewController
 @end
 
-#pragma mark - 1. 音频模块（你的原始代码，一字不改）
+#pragma mark - 1. 音频模块（你的原始代码）
 %hook RPCCAudioSettingsModuleViewController
 - (void)loadView {
     UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
@@ -22,9 +22,10 @@
     self.view.frame = CGRectZero;
     [self.view removeFromSuperview];
 }
+- (CGSize)preferredContentSize { return CGSizeZero; }
 %end
 
-#pragma mark - 2. 视频模块（你的原始代码，一字不改）
+#pragma mark - 2. 视频模块（你的原始代码）
 %hook RPCCVideoSettingsModuleViewController
 - (void)loadView {
     UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
@@ -39,35 +40,37 @@
     self.view.frame = CGRectZero;
     [self.view removeFromSuperview];
 }
+- (CGSize)preferredContentSize { return CGSizeZero; }
 %end
 
-#pragma mark - 3. 容器：只做高度压缩（dispatch 到下一个 runloop，不影响原布局）
+#pragma mark - 3. 容器层：布局源头返回 0 高度
 %hook CCUIContentModuleContainerViewController
+
+- (CGSize)preferredContentSize {
+    UIViewController *child = self.childViewControllers.firstObject;
+    if(child) {
+        NSString *cls = NSStringFromClass([child class]);
+        if([cls containsString:@"RPCCAudioSettings"] || [cls containsString:@"RPCCVideoSettings"]) {
+            return CGSizeZero;
+        }
+    }
+    return %orig;
+}
+
 - (void)viewDidLayoutSubviews {
     %orig;
-    
     UIViewController *child = self.childViewControllers.firstObject;
     if(!child) return;
     NSString *cls = NSStringFromClass([child class]);
     if(![cls containsString:@"RPCCAudioSettings"] && ![cls containsString:@"RPCCVideoSettings"]) return;
-
-    // 记住上层 cell（removeFromSuperview 后就拿不到了）
+    
     UIView *cell = self.view.superview.superview;
-    
-    // 你的原始隐藏逻辑
-    self.view.hidden = YES;
-    self.view.alpha = 0;
-    self.view.frame = CGRectZero;
-    [self.view removeFromSuperview];
-    
-    // 下一个 runloop 压缩 cell 高度，不干扰本次布局
     if(cell) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            CGRect f = cell.frame;
-            f.size.height = 0.01;
-            cell.frame = f;
-            cell.hidden = YES;
-        });
+        CGRect f = cell.frame;
+        f.size.height = 0.01;
+        cell.frame = f;
+        cell.hidden = YES;
     }
 }
+
 %end
