@@ -28,8 +28,11 @@
     Class containerClass = NSClassFromString(@"CCUIContentModuleContainerViewController");
     Class collVcClass = NSClassFromString(@"CCUIModuleCollectionViewController");
 
+    id selfId = self;
+    UICollectionView *cv = [selfId valueForKey:@"collectionView"];
+    id delegateObj = cv.delegate;
+
     for(UICollectionViewLayoutAttributes *attr in attrsArr) {
-        id delegateObj = self.collectionView.delegate;
         if(![delegateObj isKindOfClass:collVcClass]){
             [final addObject:attr];
             continue;
