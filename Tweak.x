@@ -1,52 +1,38 @@
 #import <UIKit/UIKit.h>
 
-// 1. 必须在所有 %hook 之前完整声明 Interface，不能依赖 Logos 的自动生成
-@interface CCUIContentModuleContainerView : UIView
-@property (nonatomic, copy, readonly) NSString *moduleIdentifier;
-@end
-
 @interface CCUIModuleCollectionViewController : UIViewController
+@property (nonatomic, copy) NSArray *moduleIdentifiers;
 @end
 
-// 2. 匹配逻辑
 static BOOL isTargetModule(NSString *identifier) {
     if (!identifier) return NO;
-    return [identifier isEqualToString:@"com.apple.replaykit.AudioConferenceControlCenterModule"] ||
-           [identifier isEqualToString:@"com.apple.replaykit.VideoConferenceControlCenterModule"] ||
-           [identifier containsString:@"AudioConferenceControlCenter"] ||
+    return [identifier containsString:@"AudioConferenceControlCenter"] ||
            [identifier containsString:@"VideoConferenceControlCenter"];
 }
 
-// 3. 核心布局剔除
 %hook CCUIModuleCollectionViewController
 
-- (BOOL)_shouldShowModuleWithIdentifier:(NSString *)identifier {
-    if (isTargetModule(identifier)) {
-        return NO;
+// 拦截 Setter 方法：当系统传入模块列表时，直接过滤掉录音/视频模块
+- (void)setModuleIdentifiers:(NSArray *)moduleIdentifiers {
+    NSMutableArray *filtered = [NSMutableArray array];
+    for (NSString *identifier in moduleIdentifiers) {
+        if (!isTargetModule(identifier)) {
+            [filtered addObject:identifier];
+        }
     }
-    return %orig;
+    %orig([filtered copy]);
 }
 
-%end
-
-// 4. 视图层兜底
-%hook CCUIContentModuleContainerView
-
-- (void)setFrame:(CGRect)frame {
-    if (isTargetModule(self.moduleIdentifier)) {
-        %orig(CGRectZero);
-        self.hidden = YES;
-        return;
+// 拦截 Getter 方法兜底
+- (NSArray *)moduleIdentifiers {
+    NSArray *orig = %orig;
+    NSMutableArray *filtered = [NSMutableArray array];
+    for (NSString *identifier in orig) {
+        if (!isTargetModule(identifier)) {
+            [filtered addObject:identifier];
+        }
     }
-    %orig;
-}
-
-- (void)layoutSubviews {
-    %orig;
-    if (isTargetModule(self.moduleIdentifier)) {
-        self.hidden = YES;
-        self.frame = CGRectZero;
-    }
+    return [filtered copy];
 }
 
 %end
