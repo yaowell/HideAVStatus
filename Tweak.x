@@ -5,28 +5,26 @@
 
 %hook CCUILayoutView
 
-// 1. 从排版列表中彻底过滤掉麦克风/视频效果 View，让它完全不参与坐标分配
-- (NSArray *)subviewsToLayout {
-    NSArray *originalSubviews = %orig;
-    NSMutableArray *filtered = [NSMutableArray array];
+- (CGRect)frameForSubview:(UIView *)subview {
+    CGRect originalFrame = %orig;
+    NSString *cls = NSStringFromClass([subview class]);
     
-    for (UIView *subview in originalSubviews) {
-        NSString *cls = NSStringFromClass([subview class]);
-        if ([cls containsString:@"AudioConference"] || 
-            [cls containsString:@"VideoConference"] || 
-            [cls containsString:@"Sensor"] ||
-            [cls containsString:@"ReplayKit"]) {
-            subview.hidden = YES; // 顺手隐藏
-            continue; // 跳过，不计入排版队列
-        }
-        [filtered addObject:subview];
+    // 1. 如果是顶部的传感器/音视频模块，直接将坐标和尺寸清零
+    if ([cls containsString:@"AudioConference"] || 
+        [cls containsString:@"VideoConference"] || 
+        [cls containsString:@"Sensor"] ||
+        [cls containsString:@"ReplayKit"]) {
+        subview.hidden = YES;
+        return CGRectZero;
     }
-    return [filtered copy];
-}
-
-// 2. 将垂直双倍行距置空，消除顶部的额外 Margin/Padding 占位
-- (id)_verticalDoubleMarginIndices {
-    return nil;
+    
+    // 2. 如果顶部的模块被隐藏，将下方所有正常图标整体向上平移偏移量（通常为顶部卡片高度 + 间距）
+    // 提示：若平移高度需要微调，可根据实际效果调整 70 这个数值
+    if (originalFrame.origin.y > 0) {
+        originalFrame.origin.y = MAX(0, originalFrame.origin.y - 70);
+    }
+    
+    return originalFrame;
 }
 
 %end
