@@ -1,5 +1,9 @@
 #import <UIKit/UIKit.h>
 
+@interface CCUILayoutView : UIView
+- (id)layoutSource;
+@end
+
 %hook CCUILayoutView
 
 - (void)layoutSubviews {
@@ -10,7 +14,7 @@
         NSString *className = [NSString stringWithUTF8String:object_getClassName(source)];
         NSString *logContent = [NSString stringWithFormat:@"layoutSource Class: %@\n", className];
         
-        // 直接写入本地文件 /tmp/cc_debug.txt
+        // 写入本地文件 /tmp/cc_debug.txt
         NSFileHandle *fileHandle = [NSFileHandle fileHandleForWritingAtPath:@"/tmp/cc_debug.txt"];
         if (fileHandle) {
             [fileHandle seekToEndOfFile];
