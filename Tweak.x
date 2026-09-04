@@ -1,130 +1,92 @@
 #import <UIKit/UIKit.h>
 
-// ============================================================
-// 接口声明
-// ============================================================
-
-@interface RPCCAudioSettingsModuleViewController : UIViewController
-@end
-
-@interface RPCCVideoSettingsModuleViewController : UIViewController
-@end
-
-
-// ============================================================
-// 判断是否为我们要隐藏的 RPCC 模块
-// ============================================================
-
-static BOOL BMIsRPCCHiddenModule(UIViewController *vc)
+static void BMPrintVCChain(UIViewController *vc)
 {
-    NSString *cls = NSStringFromClass([vc class]);
+    NSLog(@"========== RPCC VC CHAIN ==========");
 
-    return [cls isEqualToString:@"RPCCAudioSettingsModuleViewController"] ||
-           [cls isEqualToString:@"RPCCVideoSettingsModuleViewController"];
+    int i = 0;
+
+    while (vc && i < 15) {
+
+        NSLog(@"[RPCC] VC[%d] = %@",
+              i,
+              NSStringFromClass([vc class]));
+
+        NSLog(@"[RPCC]     view = %@ frame=%@",
+              NSStringFromClass([vc.view class]),
+              NSStringFromCGRect(vc.view.frame));
+
+        vc = vc.parentViewController;
+        i++;
+    }
+
+    NSLog(@"========== END VC CHAIN ==========");
+}
+
+
+static void BMPrintViewChain(UIView *view)
+{
+    NSLog(@"========== RPCC VIEW CHAIN ==========");
+
+    int i = 0;
+
+    while (view && i < 15) {
+
+        NSLog(@"[RPCC] VIEW[%d] = %@ frame=%@ hidden=%d",
+              i,
+              NSStringFromClass([view class]),
+              NSStringFromCGRect(view.frame),
+              view.hidden);
+
+        view = view.superview;
+        i++;
+    }
+
+    NSLog(@"========== END VIEW CHAIN ==========");
 }
 
 
 // ============================================================
-// 麦克风模式
+// 视频
 // ============================================================
 
-%hook RPCCAudioSettingsModuleViewController
+%hook RPCCVideoSettingsModuleViewController
 
-- (void)loadView
-{
-    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
-
-    emptyView.hidden = YES;
-    emptyView.alpha = 0.0;
-    emptyView.userInteractionEnabled = NO;
-
-    self.view = emptyView;
-}
-
-- (void)viewDidLoad
+- (void)viewDidAppear:(BOOL)animated
 {
     %orig;
 
-    self.view.hidden = YES;
-    self.view.alpha = 0.0;
-    self.view.userInteractionEnabled = NO;
-}
+    static BOOL printed = NO;
 
-- (CGSize)preferredContentSize
-{
-    return CGSizeZero;
-}
+    if (!printed) {
+        printed = YES;
 
-- (CGSize)systemLayoutSizeFittingSize:(CGSize)targetSize
-{
-    return CGSizeZero;
-}
-
-- (CGSize)sizeForChildContentContainer:(id<UIContentContainer>)container
-                               withParentContainerSize:(CGSize)parentSize
-{
-    return CGSizeZero;
-}
-
-- (void)viewDidLayoutSubviews
-{
-    %orig;
-
-    self.view.hidden = YES;
-    self.view.alpha = 0.0;
+        BMPrintVCChain(self);
+        BMPrintViewChain(self.view);
+    }
 }
 
 %end
 
 
 // ============================================================
-// 视讯效果
+// 音频
 // ============================================================
 
-%hook RPCCVideoSettingsModuleViewController
+%hook RPCCAudioSettingsModuleViewController
 
-- (void)loadView
-{
-    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
-
-    emptyView.hidden = YES;
-    emptyView.alpha = 0.0;
-    emptyView.userInteractionEnabled = NO;
-
-    self.view = emptyView;
-}
-
-- (void)viewDidLoad
+- (void)viewDidAppear:(BOOL)animated
 {
     %orig;
 
-    self.view.hidden = YES;
-    self.view.alpha = 0.0;
-    self.view.userInteractionEnabled = NO;
-}
+    static BOOL printed = NO;
 
-- (CGSize)preferredContentSize
-{
-    return CGSizeZero;
-}
+    if (!printed) {
+        printed = YES;
 
-- (CGSize)systemLayoutSizeFittingSize:(CGSize)targetSize
-{
-    return CGSizeZero;
-}
-
-- (CGSize)sizeForChildContentContainer:(id<UIContentContainer>)container
-                               withParentContainerSize:(CGSize)parentSize
-{
-    return CGSizeZero;
-}
-
-- (void)viewDidLayoutSubviews
-{
-    %orig;
-
-    self.view.hidden = YES;
-    self.view.alpha = 0.0;
+        BMPrintVCChain(self);
+        BMPrintViewChain(self.view);
+    }
 }
 
 %end
