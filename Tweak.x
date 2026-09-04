@@ -1,15 +1,24 @@
 #import <UIKit/UIKit.h>
-#import <os/log.h>
 
 %hook CCUILayoutView
 
 - (void)layoutSubviews {
     %orig;
     
-    // 获取真正的 layoutSource 代理对象类名
     id source = [self layoutSource];
     if (source) {
-        os_log(OS_LOG_DEFAULT, "===[CC_DEBUG] layoutSource Class: %{public}s", object_getClassName(source));
+        NSString *className = [NSString stringWithUTF8String:object_getClassName(source)];
+        NSString *logContent = [NSString stringWithFormat:@"layoutSource Class: %@\n", className];
+        
+        // 直接写入本地文件 /tmp/cc_debug.txt
+        NSFileHandle *fileHandle = [NSFileHandle fileHandleForWritingAtPath:@"/tmp/cc_debug.txt"];
+        if (fileHandle) {
+            [fileHandle seekToEndOfFile];
+            [fileHandle writeData:[logContent dataUsingEncoding:NSUTF8StringEncoding]];
+            [fileHandle closeFile];
+        } else {
+            [logContent writeToFile:@"/tmp/cc_debug.txt" atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        }
     }
 }
 
