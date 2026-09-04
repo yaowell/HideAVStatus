@@ -6,7 +6,7 @@
 @end
 @class CCUIModuleCollectionViewController;
 
-#pragma mark - 工具：判断是否目标模块
+#pragma mark - 工具
 static BOOL isTargetModule(id obj) {
     if(!obj) return NO;
     NSString *cls = NSStringFromClass([obj class]);
@@ -21,7 +21,7 @@ static BOOL containsTarget(id container) {
     return NO;
 }
 
-#pragma mark - 视图隐藏兜底（极端情况也看不见）
+#pragma mark - 视图隐藏兜底
 %hook RPCCAudioSettingsModuleViewController
 - (void)loadView {
     UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
@@ -50,15 +50,21 @@ static BOOL containsTarget(id container) {
 }
 %end
 
-#pragma mark - 核心：添加模块时直接拦截（根源消除，无占位）
+#pragma mark - 核心：创建后立刻用系统原生方法移除
 %hook CCUIModuleCollectionViewController
 
 - (id)_setupAndAddModuleViewControllerToHierarchy:(id)viewController {
-    if(containsTarget(viewController)) {
-        NSLog(@"[HideAV] 已拦截模块: %@", NSStringFromClass([viewController class]));
-        return nil;
+    id result = %orig(viewController);
+    
+    if(containsTarget(result)) {
+        NSLog(@"[HideAV] 移除模块: %@", NSStringFromClass([result class]));
+        // 用系统自己的移除方法，内部状态一致，不会崩
+        if([self respondsToSelector:@selector(_removeAndTearDownModuleViewControllerFromHierarchy:)]) {
+            [self performSelector:@selector(_removeAndTearDownModuleViewControllerFromHierarchy:) withObject:result afterDelay:0.0];
+        }
     }
-    return %orig(viewController);
+    
+    return result;
 }
 
 %end
