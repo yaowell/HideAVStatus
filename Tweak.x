@@ -3,13 +3,11 @@
 @protocol CCUIContentModule <NSObject>
 @end
 
-@interface CCUIModuleCollectionViewLayout : UICollectionViewLayout
-@end
-
 %hook CCUIContentModuleContainerViewController
 
 - (id<CCUIContentModule>)contentModule {
-    id childVc = [self childViewControllers].firstObject;
+    id selfId = self;
+    id childVc = [selfId childViewControllers].firstObject;
     if(childVc) {
         NSString *cls = NSStringFromClass([childVc class]);
         if ([cls isEqualToString:@"RPCCAudioSettingsModuleViewController"] ||
