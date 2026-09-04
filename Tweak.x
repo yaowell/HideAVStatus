@@ -2,28 +2,16 @@
 
 @interface RPCCAudioSettingsModuleViewController : UIViewController
 @end
-
 @interface RPCCVideoSettingsModuleViewController : UIViewController
 @end
 
-@interface CCUIContentModuleContainerViewController : UIViewController
-@end
-
-#pragma mark - 全局记录目标 cell
-static NSMutableSet *g_targetCells = nil;
-
-static BOOL isCCCollectionView(UICollectionView *cv) {
-    if(!cv) return NO;
-    if([NSStringFromClass(cv.class) containsString:@"CCUI"]) return YES;
-    UIResponder *r = cv.nextResponder;
-    while(r) {
-        if([NSStringFromClass([r class]) containsString:@"CCUIModule"]) return YES;
-        r = r.nextResponder;
-    }
-    return NO;
+static BOOL isTargetModule(id obj) {
+    if(!obj) return NO;
+    NSString *cls = NSStringFromClass([obj class]);
+    return [cls containsString:@"RPCCAudioSettings"] || [cls containsString:@"RPCCVideoSettings"];
 }
 
-#pragma mark - 1. 音频模块（你的原始隐藏逻辑）
+#pragma mark - 1. 视图隐藏（你的原始逻辑，保留）
 %hook RPCCAudioSettingsModuleViewController
 - (void)loadView {
     UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
@@ -36,10 +24,8 @@ static BOOL isCCCollectionView(UICollectionView *cv) {
     self.view.alpha = 0;
     [self.view removeFromSuperview];
 }
-- (CGSize)preferredContentSize { return CGSizeZero; }
 %end
 
-#pragma mark - 2. 视频模块（你的原始隐藏逻辑）
 %hook RPCCVideoSettingsModuleViewController
 - (void)loadView {
     UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
@@ -52,69 +38,70 @@ static BOOL isCCCollectionView(UICollectionView *cv) {
     self.view.alpha = 0;
     [self.view removeFromSuperview];
 }
-- (CGSize)preferredContentSize { return CGSizeZero; }
 %end
 
-#pragma mark - 3. 容器：隐藏 + 记录 cell 指针
-%hook CCUIContentModuleContainerViewController
-- (void)viewWillLayoutSubviews {
+#pragma mark - 2. 数据源层：模块填充后过滤掉目标模块
+%hook CCUIModuleCollectionViewController
+
+- (void)_populateModuleViewControllers {
     %orig;
-    UIViewController *child = self.childViewControllers.firstObject;
-    if(!child) return;
-    NSString *cls = NSStringFromClass([child class]);
-    if(![cls containsString:@"RPCCAudioSettings"] && ![cls containsString:@"RPCCVideoSettings"]) return;
-
-    // 在 removeFromSuperview 之前，把 cell 记下来
-    UIView *contentView = self.view.superview;
-    UIView *cell = contentView.superview;
-    if(cell) {
-        if(!g_targetCells) g_targetCells = [NSMutableSet set];
-        [g_targetCells addObject:cell];
-    }
-
-    // 你的原始隐藏逻辑
-    self.view.hidden = YES;
-    self.view.alpha = 0;
-    self.view.frame = CGRectZero;
-    [self.view removeFromSuperview];
-}
-%end
-
-#pragma mark - 4. 核心：布局阶段把目标 cell 的 size 强制归零
-%hook UICollectionViewLayout
-
-- (NSArray<UICollectionViewLayoutAttributes *> *)layoutAttributesForElementsInRect:(CGRect)rect {
-    NSArray *attrs = %orig;
-    UICollectionView *cv = self.collectionView;
-    if(!isCCCollectionView(cv) || !g_targetCells) return attrs;
-
-    NSMutableArray *result = [NSMutableArray array];
-    for(UICollectionViewLayoutAttributes *attr in attrs) {
-        UICollectionViewCell *cell = [cv cellForItemAtIndexPath:attr.indexPath];
-        if(cell && [g_targetCells containsObject:cell]) {
-            UICollectionViewLayoutAttributes *newAttr = [attr copy];
-            newAttr.size = CGSizeZero;
-            newAttr.alpha = 0;
-            newAttr.hidden = YES;
-            [result addObject:newAttr];
-        } else {
-            [result addObject:attr];
+    
+    id mgr = [self valueForKey:@"_moduleManager"];
+    if(!mgr) return;
+    
+    // 拿到所有模块实例
+    NSArray *instances = [mgr valueForKey:@"moduleInstances"];
+    if(!instances) return;
+    
+    NSMutableArray *filtered = [instances mutableCopy];
+    BOOL changed = NO;
+    for(id inst in [instances copy]) {
+        id vc = [inst valueForKey:@"viewController"];
+        if(isTargetModule(vc)) {
+            [filtered removeObject:inst];
+            changed = YES;
+            NSLog(@"[HideAV] 移除模块实例: %@", NSStringFromClass([vc class]));
         }
     }
-    return result;
+    
+    if(changed) {
+        [mgr setValue:filtered forKey:@"moduleInstances"];
+        // 触发重新布局
+        [self performSelector:@selector(_updateModuleControllers) withObject:nil afterDelay:0.01];
+    }
 }
 
-- (UICollectionViewLayoutAttributes *)layoutAttributesForItemAtIndexPath:(NSIndexPath *)indexPath {
-    UICollectionViewLayoutAttributes *attr = %orig;
-    UICollectionView *cv = self.collectionView;
-    if(!isCCCollectionView(cv) || !g_targetCells) return attr;
-    UICollectionViewCell *cell = [cv cellForItemAtIndexPath:indexPath];
-    if(cell && [g_targetCells containsObject:cell]) {
-        attr.size = CGSizeZero;
-        attr.alpha = 0;
-        attr.hidden = YES;
+%end
+
+#pragma mark - 3. 布局层：目标模块大小强制归零
+%hook CCUIModuleCollectionViewController
+
+- (CGSize)layoutView:(id)layoutView layoutSizeForSubview:(id)subview {
+    CGSize size = %orig;
+    
+    // 沿着子视图找内部控制器
+    UIResponder *r = subview;
+    while(r) {
+        if([r isKindOfClass:[UIViewController class]]) {
+            if(isTargetModule(r)) {
+                NSLog(@"[HideAV] 布局大小归零: %@", NSStringFromClass([r class]));
+                return CGSizeZero;
+            }
+            break;
+        }
+        r = r.nextResponder;
     }
-    return attr;
+    
+    // 再找容器里的子控制器
+    if([r isKindOfClass:NSClassFromString(@"CCUIContentModuleContainerViewController")]) {
+        id child = [(UIViewController *)r childViewControllers].firstObject;
+        if(isTargetModule(child)) {
+            NSLog(@"[HideAV] 容器布局大小归零: %@", NSStringFromClass([child class]));
+            return CGSizeZero;
+        }
+    }
+    
+    return size;
 }
 
 %end
