@@ -32,12 +32,12 @@
     NSArray *attrsArr = %orig;
     NSMutableArray *final = [NSMutableArray array];
     for(UICollectionViewLayoutAttributes *attr in attrsArr) {
-        UIViewController *collectionVc = [(UICollectionView *)self.collectionView delegate];
-        if(![collectionVc isKindOfClass:NSClassFromString(@"CCUIModuleCollectionViewController")]){
+        id delegateObj = self.collectionView.delegate;
+        if(![delegateObj isKindOfClass:NSClassFromString(@"CCUIModuleCollectionViewController")]){
             [final addObject:attr];
             continue;
         }
-        NSArray *containers = [collectionVc valueForKeyPath:@"moduleContainerViewControllers"];
+        NSArray *containers = [delegateObj valueForKeyPath:@"moduleContainerViewControllers"];
         if(attr.indexPath.item >= containers.count) {
             [final addObject:attr];
             continue;
