@@ -3,17 +3,13 @@
 @protocol CCUIContentModule <NSObject>
 @end
 
-@interface CCUIContentModuleContainerViewController : UIViewController
-@property (nonatomic, strong, readwrite) id<CCUIContentModule> contentModule;
-@end
-
 @interface CCUIModuleCollectionViewLayout : UICollectionViewLayout
 @end
 
 %hook CCUIContentModuleContainerViewController
 
 - (id<CCUIContentModule>)contentModule {
-    UIViewController *childVc = self.childViewControllers.firstObject;
+    id childVc = [self childViewControllers].firstObject;
     if(childVc) {
         NSString *cls = NSStringFromClass([childVc class]);
         if ([cls isEqualToString:@"RPCCAudioSettingsModuleViewController"] ||
@@ -31,9 +27,12 @@
 - (NSArray<UICollectionViewLayoutAttributes *> *)layoutAttributesForElementsInRect:(CGRect)rect {
     NSArray *attrsArr = %orig;
     NSMutableArray *final = [NSMutableArray array];
+    Class containerClass = NSClassFromString(@"CCUIContentModuleContainerViewController");
+    Class collVcClass = NSClassFromString(@"CCUIModuleCollectionViewController");
+
     for(UICollectionViewLayoutAttributes *attr in attrsArr) {
         id delegateObj = self.collectionView.delegate;
-        if(![delegateObj isKindOfClass:NSClassFromString(@"CCUIModuleCollectionViewController")]){
+        if(![delegateObj isKindOfClass:collVcClass]){
             [final addObject:attr];
             continue;
         }
@@ -43,12 +42,11 @@
             continue;
         }
         id containerObj = containers[attr.indexPath.item];
-        if(![containerObj isKindOfClass:[CCUIContentModuleContainerViewController class]]){
+        if(![containerObj isKindOfClass:containerClass]){
             [final addObject:attr];
             continue;
         }
-        CCUIContentModuleContainerViewController *containerVC = containerObj;
-        UIViewController *inner = containerVC.childViewControllers.firstObject;
+        id inner = [containerObj childViewControllers].firstObject;
         if(!inner) {
             [final addObject:attr];
             continue;
