@@ -4,110 +4,70 @@
 @end
 @interface RPCCVideoSettingsModuleViewController : UIViewController
 @end
+@interface CCUIContentModuleContainerViewController : UIViewController
+@end
 
-static BOOL isTargetModule(id obj) {
-    if(!obj) return NO;
-    NSString *cls = NSStringFromClass([obj class]);
-    return [cls containsString:@"RPCCAudioSettings"] || [cls containsString:@"RPCCVideoSettings"];
-}
-
-static id getIvar(id obj, NSString *key) {
-    return [obj valueForKey:key];
-}
-
-static void setIvar(id obj, NSString *key, id val) {
-    [obj setValue:val forKey:key];
-}
-
-#pragma mark - 1. 视图隐藏
+#pragma mark - 1. 音频模块（你的原始代码，一字不改）
 %hook RPCCAudioSettingsModuleViewController
 - (void)loadView {
-    UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
-    v.hidden = YES;
-    self.view = v;
+    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
+    emptyView.hidden = YES;
+    emptyView.userInteractionEnabled = NO;
+    self.view = emptyView;
 }
 - (void)viewDidLoad {
     %orig;
     self.view.hidden = YES;
-    self.view.alpha = 0;
+    self.view.alpha = 0.0;
+    self.view.frame = CGRectZero;
     [self.view removeFromSuperview];
 }
 %end
 
+#pragma mark - 2. 视频模块（你的原始代码，一字不改）
 %hook RPCCVideoSettingsModuleViewController
 - (void)loadView {
-    UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
-    v.hidden = YES;
-    self.view = v;
+    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
+    emptyView.hidden = YES;
+    emptyView.userInteractionEnabled = NO;
+    self.view = emptyView;
 }
 - (void)viewDidLoad {
     %orig;
     self.view.hidden = YES;
-    self.view.alpha = 0;
+    self.view.alpha = 0.0;
+    self.view.frame = CGRectZero;
     [self.view removeFromSuperview];
 }
 %end
 
-#pragma mark - 2. 数据源层：过滤模块实例
-%hook CCUIModuleCollectionViewController
-
-- (void)_populateModuleViewControllers {
+#pragma mark - 3. 容器：只做高度压缩（dispatch 到下一个 runloop，不影响原布局）
+%hook CCUIContentModuleContainerViewController
+- (void)viewDidLayoutSubviews {
     %orig;
     
-    id selfId = self;
-    id mgr = getIvar(selfId, @"_moduleManager");
-    if(!mgr) return;
+    UIViewController *child = self.childViewControllers.firstObject;
+    if(!child) return;
+    NSString *cls = NSStringFromClass([child class]);
+    if(![cls containsString:@"RPCCAudioSettings"] && ![cls containsString:@"RPCCVideoSettings"]) return;
+
+    // 记住上层 cell（removeFromSuperview 后就拿不到了）
+    UIView *cell = self.view.superview.superview;
     
-    NSArray *instances = getIvar(mgr, @"moduleInstances");
-    if(!instances) return;
+    // 你的原始隐藏逻辑
+    self.view.hidden = YES;
+    self.view.alpha = 0;
+    self.view.frame = CGRectZero;
+    [self.view removeFromSuperview];
     
-    NSMutableArray *filtered = [instances mutableCopy];
-    BOOL changed = NO;
-    for(id inst in [instances copy]) {
-        id vc = getIvar(inst, @"viewController");
-        if(isTargetModule(vc)) {
-            [filtered removeObject:inst];
-            changed = YES;
-            NSLog(@"[HideAV] 移除模块实例: %@", NSStringFromClass([vc class]));
-        }
-    }
-    
-    if(changed) {
-        setIvar(mgr, @"moduleInstances", filtered);
-        [selfId performSelector:@selector(_updateModuleControllers) withObject:nil afterDelay:0.01];
+    // 下一个 runloop 压缩 cell 高度，不干扰本次布局
+    if(cell) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            CGRect f = cell.frame;
+            f.size.height = 0.01;
+            cell.frame = f;
+            cell.hidden = YES;
+        });
     }
 }
-
-%end
-
-#pragma mark - 3. 布局层：大小归零
-%hook CCUIModuleCollectionViewController
-
-- (CGSize)layoutView:(id)layoutView layoutSizeForSubview:(id)subview {
-    CGSize size = %orig;
-    
-    UIResponder *r = subview;
-    while(r) {
-        if([r isKindOfClass:[UIViewController class]]) {
-            if(isTargetModule(r)) {
-                NSLog(@"[HideAV] 布局大小归零: %@", NSStringFromClass([r class]));
-                return CGSizeZero;
-            }
-            break;
-        }
-        r = r.nextResponder;
-    }
-    
-    Class containerCls = NSClassFromString(@"CCUIContentModuleContainerViewController");
-    if([r isKindOfClass:containerCls]) {
-        id child = [(UIViewController *)r childViewControllers].firstObject;
-        if(isTargetModule(child)) {
-            NSLog(@"[HideAV] 容器布局大小归零: %@", NSStringFromClass([child class]));
-            return CGSizeZero;
-        }
-    }
-    
-    return size;
-}
-
 %end
