@@ -1,32 +1,42 @@
 #import <UIKit/UIKit.h>
 
-// 1. 拦截控制中心模块配置中心：直接从源头把这两个模块从列表中剔除
-%hook CCUIModuleSettingsManager
+@interface CCUIModuleCollectionViewController : UIViewController
+@end
 
-- (id)moduleSettingsForModuleIdentifier:(NSString *)identifier {
-    // 如果系统尝试获取音视频模块的布局设置，直接返回 nil，让布局引擎彻底忽略它们
-    if ([identifier containsString:@"audio-attribution"] || 
-        [identifier containsString:@"video-attribution"] ||
-        [identifier containsString:@"RPCCAudio"] || 
-        [identifier containsString:@"RPCCVideo"]) {
-        return nil;
+// 1. 彻底拦截 VC 的生命周期，禁止视图装载
+%hook RPCCAudioSettingsModuleViewController
+- (void)loadView {
+    UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
+    v.hidden = YES;
+    self.view = v;
+}
+%end
+
+%hook RPCCVideoSettingsModuleViewController
+- (void)loadView {
+    UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
+    v.hidden = YES;
+    self.view = v;
+}
+%end
+
+// 2.【核心】：直接禁止控制中心把这两个 VC 注册进模块列表
+%hook CCUIModuleCollectionViewController
+
+- (void)addChildViewController:(UIViewController *)childController {
+    NSString *cls = NSStringFromClass([childController class]);
+    // 只要是音视频卡片的 VC，拒绝加入容器，从根源清空 Item 占位
+    if ([cls containsString:@"RPCCAudio"] || [cls containsString:@"RPCCVideo"]) {
+        return;
     }
-    return %orig;
+    %orig;
 }
 
 %end
 
-// 2. 拦截 Module Layout 矩阵生成：强行清空它们占用的 Grid 布局
-%hook CCUIMGroupLayoutGrid
-
-- (id)ccui_componentForModuleIdentifier:(NSString *)identifier {
-    if ([identifier containsString:@"audio-attribution"] || 
-        [identifier containsString:@"video-attribution"] ||
-        [identifier containsString:@"RPCCAudio"] || 
-        [identifier containsString:@"RPCCVideo"]) {
-        return nil; // 布局网格不为它分配任何坐标
-    }
-    return %orig;
+// 3. 防线：干掉灵动岛/SystemAperture 动态卡片的布局引导线
+%hook SBUISA_systemApertureLayoutGuide
+- (CGRect)layoutFrame {
+    return CGRectZero;
 }
-
 %end
