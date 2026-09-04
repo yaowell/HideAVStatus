@@ -1,92 +1,149 @@
 #import <UIKit/UIKit.h>
 
+// ============================================================
+// 显式声明真实类
+// ============================================================
+
+@interface RPCCAudioSettingsModuleViewController : UIViewController
+@end
+
+@interface RPCCVideoSettingsModuleViewController : UIViewController
+@end
+
+
+// ============================================================
+// 打印 ViewController 父级链
+// ============================================================
+
 static void BMPrintVCChain(UIViewController *vc)
 {
-    NSLog(@"========== RPCC VC CHAIN ==========");
+    NSLog(@"========== [RPCC] VC CHAIN BEGIN ==========");
 
-    int i = 0;
+    int index = 0;
 
-    while (vc && i < 15) {
+    while (vc != nil && index < 15) {
 
         NSLog(@"[RPCC] VC[%d] = %@",
-              i,
+              index,
               NSStringFromClass([vc class]));
 
-        NSLog(@"[RPCC]     view = %@ frame=%@",
-              NSStringFromClass([vc.view class]),
-              NSStringFromCGRect(vc.view.frame));
+        UIView *view = vc.view;
+
+        NSLog(@"[RPCC]      view = %@",
+              NSStringFromClass([view class]));
+
+        NSLog(@"[RPCC]      frame = %@",
+              NSStringFromCGRect(view.frame));
 
         vc = vc.parentViewController;
-        i++;
+
+        index++;
     }
 
-    NSLog(@"========== END VC CHAIN ==========");
-}
-
-
-static void BMPrintViewChain(UIView *view)
-{
-    NSLog(@"========== RPCC VIEW CHAIN ==========");
-
-    int i = 0;
-
-    while (view && i < 15) {
-
-        NSLog(@"[RPCC] VIEW[%d] = %@ frame=%@ hidden=%d",
-              i,
-              NSStringFromClass([view class]),
-              NSStringFromCGRect(view.frame),
-              view.hidden);
-
-        view = view.superview;
-        i++;
-    }
-
-    NSLog(@"========== END VIEW CHAIN ==========");
+    NSLog(@"========== [RPCC] VC CHAIN END ==========");
 }
 
 
 // ============================================================
-// 视频
+// 打印 View 的 superview 链
+// ============================================================
+
+static void BMPrintViewChain(UIView *view)
+{
+    NSLog(@"========== [RPCC] VIEW CHAIN BEGIN ==========");
+
+    int index = 0;
+
+    while (view != nil && index < 15) {
+
+        NSLog(@"[RPCC] VIEW[%d] = %@",
+              index,
+              NSStringFromClass([view class]));
+
+        NSLog(@"[RPCC]      frame = %@",
+              NSStringFromCGRect(view.frame));
+
+        NSLog(@"[RPCC]      hidden = %d",
+              view.hidden);
+
+        view = view.superview;
+
+        index++;
+    }
+
+    NSLog(@"========== [RPCC] VIEW CHAIN END ==========");
+}
+
+
+// ============================================================
+// 视频模块
 // ============================================================
 
 %hook RPCCVideoSettingsModuleViewController
 
-- (void)viewDidAppear:(BOOL)animated
+- (void)didMoveToParentViewController:(UIViewController *)parent
 {
     %orig;
 
-    static BOOL printed = NO;
+    UIViewController *vc = (UIViewController *)self;
 
-    if (!printed) {
-        printed = YES;
+    NSLog(@"[RPCC] ========================================");
+    NSLog(@"[RPCC] VIDEO MODULE CREATED");
+    NSLog(@"[RPCC] VIDEO parent = %@",
+          parent ? NSStringFromClass([parent class]) : @"nil");
 
-        BMPrintVCChain(self);
-        BMPrintViewChain(self.view);
-    }
+    BMPrintVCChain(vc);
+
+    UIView *view = vc.view;
+
+    NSLog(@"[RPCC] VIDEO view = %@",
+          NSStringFromClass([view class]));
+
+    NSLog(@"[RPCC] VIDEO superview = %@",
+          view.superview ?
+          NSStringFromClass([view.superview class]) :
+          @"nil");
+
+    BMPrintViewChain(view);
+
+    NSLog(@"[RPCC] ========================================");
 }
 
 %end
 
 
 // ============================================================
-// 音频
+// 音频模块
 // ============================================================
 
 %hook RPCCAudioSettingsModuleViewController
 
-- (void)viewDidAppear:(BOOL)animated
+- (void)didMoveToParentViewController:(UIViewController *)parent
 {
     %orig;
 
-    static BOOL printed = NO;
+    UIViewController *vc = (UIViewController *)self;
 
-    if (!printed) {
-        printed = YES;
+    NSLog(@"[RPCC] ========================================");
+    NSLog(@"[RPCC] AUDIO MODULE CREATED");
+    NSLog(@"[RPCC] AUDIO parent = %@",
+          parent ? NSStringFromClass([parent class]) : @"nil");
 
-        BMPrintVCChain(self);
-        BMPrintViewChain(self.view);
-    }
+    BMPrintVCChain(vc);
+
+    UIView *view = vc.view;
+
+    NSLog(@"[RPCC] AUDIO view = %@",
+          NSStringFromClass([view class]));
+
+    NSLog(@"[RPCC] AUDIO superview = %@",
+          view.superview ?
+          NSStringFromClass([view.superview class]) :
+          @"nil");
+
+    BMPrintViewChain(view);
+
+    NSLog(@"[RPCC] ========================================");
 }
 
 %end
