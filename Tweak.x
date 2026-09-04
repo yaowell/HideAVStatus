@@ -1,43 +1,32 @@
 #import <UIKit/UIKit.h>
 
-@interface CCUILayoutOptions : NSObject
-@end
-
 %hook CCUIModuleCollectionViewController
 
-// 1. 过滤掉 topmost (音视频状态) 模块，避免分配顶部坐标
-- (id)topmostModuleIdentifier {
-    return nil;
-}
-
-// 2. 拦截协议中的边距计算：强制将顶部 Margin/Inset 清零
-- (UIEdgeInsets)compactLayoutMargins {
-    UIEdgeInsets insets = %orig;
-    insets.top = 0;
-    return insets;
-}
-
-- (UIEdgeInsets)expandedLayoutMargins {
-    UIEdgeInsets insets = %orig;
-    insets.top = 0;
-    return insets;
-}
-
-// 3. 拦截特定布局计算：清除顶部 Topmost 模块占用的 Frame 高度
-- (CGRect)layoutView:(id)layoutView frameForSubview:(UIView *)subview {
-    CGRect rect = %orig;
-    NSString *cls = NSStringFromClass([subview class]);
-    
-    // 如果是音视频相关模块，坐标直接清零
-    if ([cls containsString:@"AudioConference"] || 
-        [cls containsString:@"VideoConference"] || 
-        [cls containsString:@"Sensor"] ||
-        [cls containsString:@"ReplayKit"]) {
-        subview.hidden = YES;
-        return CGRectZero;
+// 1. 拦截模块 Identifier 数组：遇到音视频/传感器模块直接剔除
+- (void)setModuleIdentifiers:(NSArray *)identifiers {
+    NSMutableArray *filtered = [NSMutableArray array];
+    for (NSString *identifier in identifiers) {
+        if (![identifier containsString:@"AudioConference"] && 
+            ![identifier containsString:@"VideoConference"] && 
+            ![identifier containsString:@"Sensor"] &&
+            ![identifier containsString:@"ReplayKit"] &&
+            ![identifier containsString:@"Topmost"]) {
+            [filtered addObject:identifier];
+        }
     }
-    
-    return rect;
+    %orig([filtered copy]);
+}
+
+// 2. 拦截单个模块注入
+- (void)addModuleWithIdentifier:(NSString *)identifier {
+    if ([identifier containsString:@"AudioConference"] || 
+        [identifier containsString:@"VideoConference"] || 
+        [identifier containsString:@"Sensor"] ||
+        [identifier containsString:@"ReplayKit"] ||
+        [identifier containsString:@"Topmost"]) {
+        return; // 直接拦截，拒绝加载
+    }
+    %orig;
 }
 
 %end
