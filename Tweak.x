@@ -1,149 +1,105 @@
 #import <UIKit/UIKit.h>
 
-// ============================================================
-// 显式声明真实类
-// ============================================================
-
 @interface RPCCAudioSettingsModuleViewController : UIViewController
 @end
 
 @interface RPCCVideoSettingsModuleViewController : UIViewController
 @end
 
+@interface CCUIContentModuleContainerViewController : UIViewController
+@end
 
-// ============================================================
-// 打印 ViewController 父级链
-// ============================================================
-
-static void BMPrintVCChain(UIViewController *vc)
-{
-    NSLog(@"========== [RPCC] VC CHAIN BEGIN ==========");
-
-    int index = 0;
-
-    while (vc != nil && index < 15) {
-
-        NSLog(@"[RPCC] VC[%d] = %@",
-              index,
-              NSStringFromClass([vc class]));
-
-        UIView *view = vc.view;
-
-        NSLog(@"[RPCC]      view = %@",
-              NSStringFromClass([view class]));
-
-        NSLog(@"[RPCC]      frame = %@",
-              NSStringFromCGRect(view.frame));
-
-        vc = vc.parentViewController;
-
-        index++;
-    }
-
-    NSLog(@"========== [RPCC] VC CHAIN END ==========");
+// 1. 保留你完全有效的 VC & View 实体剥离逻辑
+%hook RPCCAudioSettingsModuleViewController
+- (void)loadView {
+    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
+    emptyView.hidden = YES;
+    emptyView.userInteractionEnabled = NO;
+    self.view = emptyView;
 }
-
-
-// ============================================================
-// 打印 View 的 superview 链
-// ============================================================
-
-static void BMPrintViewChain(UIView *view)
-{
-    NSLog(@"========== [RPCC] VIEW CHAIN BEGIN ==========");
-
-    int index = 0;
-
-    while (view != nil && index < 15) {
-
-        NSLog(@"[RPCC] VIEW[%d] = %@",
-              index,
-              NSStringFromClass([view class]));
-
-        NSLog(@"[RPCC]      frame = %@",
-              NSStringFromCGRect(view.frame));
-
-        NSLog(@"[RPCC]      hidden = %d",
-              view.hidden);
-
-        view = view.superview;
-
-        index++;
-    }
-
-    NSLog(@"========== [RPCC] VIEW CHAIN END ==========");
+- (void)viewDidLoad {
+    %orig;
+    self.view.hidden = YES;
+    self.view.alpha = 0.0;
+    self.view.frame = CGRectZero;
+    [self.view removeFromSuperview];
 }
-
-
-// ============================================================
-// 视频模块
-// ============================================================
+%end
 
 %hook RPCCVideoSettingsModuleViewController
-
-- (void)didMoveToParentViewController:(UIViewController *)parent
-{
+- (void)loadView {
+    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
+    emptyView.hidden = YES;
+    emptyView.userInteractionEnabled = NO;
+    self.view = emptyView;
+}
+- (void)viewDidLoad {
     %orig;
+    self.view.hidden = YES;
+    self.view.alpha = 0.0;
+    self.view.frame = CGRectZero;
+    [self.view removeFromSuperview];
+}
+%end
 
+%hook CCUIContentModuleContainerViewController
+- (void)viewWillLayoutSubviews {
+    %orig;
     UIViewController *vc = (UIViewController *)self;
+    if (vc.childViewControllers.count > 0) {
+        NSString *childCls = NSStringFromClass([vc.childViewControllers.firstObject class]);
+        if ([childCls containsString:@"RPCCAudioSettings"] || 
+            [childCls containsString:@"RPCCVideoSettings"]) {
+            vc.view.hidden = YES;
+            vc.view.alpha = 0.0;
+            vc.view.frame = CGRectZero;
+            [vc.view removeFromSuperview];
+        }
+    }
+}
+%end
 
-    NSLog(@"[RPCC] ========================================");
-    NSLog(@"[RPCC] VIDEO MODULE CREATED");
-    NSLog(@"[RPCC] VIDEO parent = %@",
-          parent ? NSStringFromClass([parent class]) : @"nil");
+// 2.【核心改动】：干掉网格节点的物理 Height 计算
+// 让容器向网格引擎（GridEngine）报告的尺寸直接为 Zero，消除网格空行
+%hook CCUIContentModuleContainerViewController
 
-    BMPrintVCChain(vc);
+- (CGSize)intrinsicContentSize {
+    UIViewController *vc = (UIViewController *)self;
+    if (vc.childViewControllers.count > 0) {
+        NSString *childCls = NSStringFromClass([vc.childViewControllers.firstObject class]);
+        if ([childCls containsString:@"RPCCAudioSettings"] || [childCls containsString:@"RPCCVideoSettings"]) {
+            return CGSizeZero;
+        }
+    }
+    return %orig;
+}
 
-    UIView *view = vc.view;
-
-    NSLog(@"[RPCC] VIDEO view = %@",
-          NSStringFromClass([view class]));
-
-    NSLog(@"[RPCC] VIDEO superview = %@",
-          view.superview ?
-          NSStringFromClass([view.superview class]) :
-          @"nil");
-
-    BMPrintViewChain(view);
-
-    NSLog(@"[RPCC] ========================================");
+- (CGRect)compactModeFrame {
+    UIViewController *vc = (UIViewController *)self;
+    if (vc.childViewControllers.count > 0) {
+        NSString *childCls = NSStringFromClass([vc.childViewControllers.firstObject class]);
+        if ([childCls containsString:@"RPCCAudioSettings"] || [childCls containsString:@"RPCCVideoSettings"]) {
+            return CGRectZero;
+        }
+    }
+    return %orig;
 }
 
 %end
 
+// 3.【核心改动】：干掉顶部 ScrollView 的 topContentInset 伸缩偏移
+%hook CCUIHeaderPocketView
 
-// ============================================================
-// 音频模块
-// ============================================================
+- (void)setSensorAttributionExpanded:(BOOL)expanded animated:(BOOL)animated {
+    %orig(NO, NO);
+}
 
-%hook RPCCAudioSettingsModuleViewController
+- (BOOL)isSensorAttributionExpanded {
+    return NO;
+}
 
-- (void)didMoveToParentViewController:(UIViewController *)parent
-{
-    %orig;
-
-    UIViewController *vc = (UIViewController *)self;
-
-    NSLog(@"[RPCC] ========================================");
-    NSLog(@"[RPCC] AUDIO MODULE CREATED");
-    NSLog(@"[RPCC] AUDIO parent = %@",
-          parent ? NSStringFromClass([parent class]) : @"nil");
-
-    BMPrintVCChain(vc);
-
-    UIView *view = vc.view;
-
-    NSLog(@"[RPCC] AUDIO view = %@",
-          NSStringFromClass([view class]));
-
-    NSLog(@"[RPCC] AUDIO superview = %@",
-          view.superview ?
-          NSStringFromClass([view.superview class]) :
-          @"nil");
-
-    BMPrintViewChain(view);
-
-    NSLog(@"[RPCC] ========================================");
+- (CGFloat)headerHeight {
+    return 0.0;
 }
 
 %end
