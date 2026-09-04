@@ -9,97 +9,68 @@
 @interface CCUIContentModuleContainerViewController : UIViewController
 @end
 
-// 1. 保留你完全有效的 VC & View 实体剥离逻辑
+// 1. 保留你完全有效的 VC 视图彻底剥离逻辑
 %hook RPCCAudioSettingsModuleViewController
 - (void)loadView {
-    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
-    emptyView.hidden = YES;
-    emptyView.userInteractionEnabled = NO;
-    self.view = emptyView;
+    UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
+    v.hidden = YES;
+    self.view = v;
 }
 - (void)viewDidLoad {
     %orig;
-    self.view.hidden = YES;
-    self.view.alpha = 0.0;
-    self.view.frame = CGRectZero;
     [self.view removeFromSuperview];
 }
 %end
 
 %hook RPCCVideoSettingsModuleViewController
 - (void)loadView {
-    UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
-    emptyView.hidden = YES;
-    emptyView.userInteractionEnabled = NO;
-    self.view = emptyView;
+    UIView *v = [[UIView alloc] initWithFrame:CGRectZero];
+    v.hidden = YES;
+    self.view = v;
 }
 - (void)viewDidLoad {
     %orig;
-    self.view.hidden = YES;
-    self.view.alpha = 0.0;
-    self.view.frame = CGRectZero;
     [self.view removeFromSuperview];
 }
 %end
 
+// 2. 核心：沿着视图链向上“强行抹平”所有父级容器的 Height 和 Frame
 %hook CCUIContentModuleContainerViewController
-- (void)viewWillLayoutSubviews {
+
+- (void)viewDidLayoutSubviews {
     %orig;
+    
     UIViewController *vc = (UIViewController *)self;
     if (vc.childViewControllers.count > 0) {
         NSString *childCls = NSStringFromClass([vc.childViewControllers.firstObject class]);
-        if ([childCls containsString:@"RPCCAudioSettings"] || 
-            [childCls containsString:@"RPCCVideoSettings"]) {
+        if ([childCls containsString:@"RPCCAudioSettings"] || [childCls containsString:@"RPCCVideoSettings"]) {
+            
+            // 隐藏当前 VC 的 View 并清空 Frame
             vc.view.hidden = YES;
-            vc.view.alpha = 0.0;
             vc.view.frame = CGRectZero;
             [vc.view removeFromSuperview];
+            
+            // 向上递归遍历所有父级 View，强行把它们的尺寸全拉成 0，彻底压扁空白区域
+            UIView *parent = vc.view.superview;
+            while (parent != nil) {
+                // 如果父视图的类名包含 CCUI 或者 Header，说明到了控制中心的容器层
+                NSString *parentCls = NSStringFromClass([parent class]);
+                
+                // 将父视图的高度强制压扁成 0
+                CGRect pFrame = parent.frame;
+                pFrame.size.height = 0;
+                parent.frame = pFrame;
+                parent.clipsToBounds = YES;
+                
+                // 如果到了最外层的 PocketView，直接隐藏
+                if ([parentCls containsString:@"HeaderPocket"] || [parentCls containsString:@"ModuleContainer"]) {
+                    parent.hidden = YES;
+                }
+                
+                parent = parent.superview;
+            }
         }
     }
-}
-%end
-
-// 2.【核心改动】：干掉网格节点的物理 Height 计算
-// 让容器向网格引擎（GridEngine）报告的尺寸直接为 Zero，消除网格空行
-%hook CCUIContentModuleContainerViewController
-
-- (CGSize)intrinsicContentSize {
-    UIViewController *vc = (UIViewController *)self;
-    if (vc.childViewControllers.count > 0) {
-        NSString *childCls = NSStringFromClass([vc.childViewControllers.firstObject class]);
-        if ([childCls containsString:@"RPCCAudioSettings"] || [childCls containsString:@"RPCCVideoSettings"]) {
-            return CGSizeZero;
-        }
-    }
-    return %orig;
-}
-
-- (CGRect)compactModeFrame {
-    UIViewController *vc = (UIViewController *)self;
-    if (vc.childViewControllers.count > 0) {
-        NSString *childCls = NSStringFromClass([vc.childViewControllers.firstObject class]);
-        if ([childCls containsString:@"RPCCAudioSettings"] || [childCls containsString:@"RPCCVideoSettings"]) {
-            return CGRectZero;
-        }
-    }
-    return %orig;
-}
-
-%end
-
-// 3.【核心改动】：干掉顶部 ScrollView 的 topContentInset 伸缩偏移
-%hook CCUIHeaderPocketView
-
-- (void)setSensorAttributionExpanded:(BOOL)expanded animated:(BOOL)animated {
-    %orig(NO, NO);
-}
-
-- (BOOL)isSensorAttributionExpanded {
-    return NO;
-}
-
-- (CGFloat)headerHeight {
-    return 0.0;
 }
 
 %end
