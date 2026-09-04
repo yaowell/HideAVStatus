@@ -5,21 +5,28 @@
 
 %hook CCUILayoutView
 
-// 1. 布局子视图时，把所有 ReplayKit / Audio / Video 模块直接隐藏并移出排版
-- (void)layoutSubviews {
-    %orig;
+// 1. 从排版列表中彻底过滤掉麦克风/视频效果 View，让它完全不参与坐标分配
+- (NSArray *)subviewsToLayout {
+    NSArray *originalSubviews = %orig;
+    NSMutableArray *filtered = [NSMutableArray array];
     
-    for (UIView *subview in self.subviews) {
+    for (UIView *subview in originalSubviews) {
         NSString *cls = NSStringFromClass([subview class]);
         if ([cls containsString:@"AudioConference"] || 
             [cls containsString:@"VideoConference"] || 
             [cls containsString:@"Sensor"] ||
             [cls containsString:@"ReplayKit"]) {
-            subview.hidden = YES;
-            // 消除其在自定义 Layout 中占据的实际高度
-            subview.frame = CGRectZero;
+            subview.hidden = YES; // 顺手隐藏
+            continue; // 跳过，不计入排版队列
         }
+        [filtered addObject:subview];
     }
+    return [filtered copy];
+}
+
+// 2. 将垂直双倍行距置空，消除顶部的额外 Margin/Padding 占位
+- (id)_verticalDoubleMarginIndices {
+    return nil;
 }
 
 %end
