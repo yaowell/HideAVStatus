@@ -4,10 +4,9 @@
 @end
 @interface RPCCVideoSettingsModuleViewController : UIViewController
 @end
-@interface CCUIContentModuleContainerViewController : UIViewController
-@end
+@class CCUIModuleCollectionViewController;
 
-#pragma mark - 1. 音频模块（你的原始代码）
+#pragma mark - 1. 视图隐藏兜底（保留你的原始逻辑）
 %hook RPCCAudioSettingsModuleViewController
 - (void)loadView {
     UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
@@ -22,10 +21,8 @@
     self.view.frame = CGRectZero;
     [self.view removeFromSuperview];
 }
-- (CGSize)preferredContentSize { return CGSizeZero; }
 %end
 
-#pragma mark - 2. 视频模块（你的原始代码）
 %hook RPCCVideoSettingsModuleViewController
 - (void)loadView {
     UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
@@ -40,37 +37,29 @@
     self.view.frame = CGRectZero;
     [self.view removeFromSuperview];
 }
-- (CGSize)preferredContentSize { return CGSizeZero; }
 %end
 
-#pragma mark - 3. 容器层：布局源头返回 0 高度
-%hook CCUIContentModuleContainerViewController
+#pragma mark - 2. 根源消除：从启用列表过滤模块
+%hook CCUIModuleCollectionViewController
 
-- (CGSize)preferredContentSize {
-    UIViewController *child = self.childViewControllers.firstObject;
-    if(child) {
-        NSString *cls = NSStringFromClass([child class]);
-        if([cls containsString:@"RPCCAudioSettings"] || [cls containsString:@"RPCCVideoSettings"]) {
-            return CGSizeZero;
+- (id)orderedEnabledModuleIdentifiersForSettingsManager:(id)manager {
+    NSArray *original = %orig;
+    if(!original) return original;
+    
+    NSMutableArray *filtered = [original mutableCopy];
+    for(NSString *identifier in [original copy]) {
+        BOOL shouldRemove = 
+            [identifier containsString:@"replaykit.Audio"] ||
+            [identifier containsString:@"replaykit.Video"] ||
+            [identifier containsString:@"AudioConference"] ||
+            [identifier containsString:@"VideoConference"];
+        
+        if(shouldRemove) {
+            [filtered removeObject:identifier];
+            NSLog(@"[HideAV] 过滤模块: %@", identifier);
         }
     }
-    return %orig;
-}
-
-- (void)viewDidLayoutSubviews {
-    %orig;
-    UIViewController *child = self.childViewControllers.firstObject;
-    if(!child) return;
-    NSString *cls = NSStringFromClass([child class]);
-    if(![cls containsString:@"RPCCAudioSettings"] && ![cls containsString:@"RPCCVideoSettings"]) return;
-    
-    UIView *cell = self.view.superview.superview;
-    if(cell) {
-        CGRect f = cell.frame;
-        f.size.height = 0.01;
-        cell.frame = f;
-        cell.hidden = YES;
-    }
+    return filtered;
 }
 
 %end
