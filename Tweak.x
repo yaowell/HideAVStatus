@@ -1,6 +1,6 @@
 #import <UIKit/UIKit.h>
 
-#pragma mark - 工具函数：判断是否是目标模块
+#pragma mark - 工具函数
 static BOOL isTargetModule(id obj) {
     if(!obj) return NO;
     id inner = nil;
@@ -12,14 +12,19 @@ static BOOL isTargetModule(id obj) {
            [cls containsString:@"RPCCVideoSettings"];
 }
 
-#pragma mark - 第一层：拦截数据源 setter（最干净，从数组里删掉）
+static void hideViewOf(id obj) {
+    UIView *v = [obj valueForKey:@"view"];
+    if(v) { v.hidden = YES; v.alpha = 0; }
+}
+
+#pragma mark - 第一层：拦截数据源 setter
 %hook CCUIModuleCollectionViewController
 
 - (void)setModuleContainerViewControllers:(NSArray *)controllers {
     NSMutableArray *filtered = [NSMutableArray array];
     for(id obj in controllers) {
         if(isTargetModule(obj)) {
-            NSLog(@"[HideAV] [Layer1] filtered: %@", NSStringFromClass([obj class]));
+            NSLog(@"[HideAV] [L1] filtered: %@", NSStringFromClass([obj class]));
             continue;
         }
         [filtered addObject:obj];
@@ -27,12 +32,11 @@ static BOOL isTargetModule(id obj) {
     %orig(filtered);
 }
 
-// 兼容下划线命名的版本
 - (void)set_moduleContainerViewControllers:(NSArray *)controllers {
     NSMutableArray *filtered = [NSMutableArray array];
     for(id obj in controllers) {
         if(isTargetModule(obj)) {
-            NSLog(@"[HideAV] [Layer1b] filtered: %@", NSStringFromClass([obj class]));
+            NSLog(@"[HideAV] [L1b] filtered: %@", NSStringFromClass([obj class]));
             continue;
         }
         [filtered addObject:obj];
@@ -40,7 +44,7 @@ static BOOL isTargetModule(id obj) {
     %orig(filtered);
 }
 
-#pragma mark - 第二层：viewWillAppear 兜底（直接改数组 + reload）
+#pragma mark - 第二层：viewWillAppear 兜底
 - (void)viewWillAppear:(BOOL)animated {
     %orig;
     id selfId = self;
@@ -60,7 +64,7 @@ static BOOL isTargetModule(id obj) {
                     if(isTargetModule(obj)) {
                         [arr removeObject:obj];
                         changed = YES;
-                        NSLog(@"[HideAV] [Layer2] removed via '%@': %@", key, NSStringFromClass([obj class]));
+                        NSLog(@"[HideAV] [L2] removed via '%@': %@", key, NSStringFromClass([obj class]));
                     }
                 }
                 if(changed) {
@@ -76,7 +80,7 @@ static BOOL isTargetModule(id obj) {
 
 %end
 
-#pragma mark - 第三层：Layout 兜底（size 强制归零，消除占位）
+#pragma mark - 第三层：Layout 兜底
 %hook CCUIModuleCollectionViewLayout
 
 - (NSArray<UICollectionViewLayoutAttributes *> *)layoutAttributesForElementsInRect:(CGRect)rect {
@@ -99,7 +103,7 @@ static BOOL isTargetModule(id obj) {
                 newAttr.alpha = 0;
                 newAttr.hidden = YES;
                 [result addObject:newAttr];
-                NSLog(@"[HideAV] [Layer3] zero-size at %@", attr.indexPath);
+                NSLog(@"[HideAV] [L3] zero-size at %@", attr.indexPath);
                 continue;
             }
         } @catch(NSException *e) {}
@@ -110,13 +114,19 @@ static BOOL isTargetModule(id obj) {
 
 %end
 
-#pragma mark - 第四层：模块自身兜底（让模块大小为0 + 隐藏）
+#pragma mark - 第四层：模块自身兜底（全部 id + KVC）
 %hook RPCCAudioSettingsModuleViewController
 - (CGSize)preferredContentSize { return CGSizeZero; }
-- (void)viewDidLoad { %orig; self.view.hidden = YES; self.view.alpha = 0; }
+- (void)viewDidLoad {
+    %orig;
+    hideViewOf(self);
+}
 %end
 
 %hook RPCCVideoSettingsModuleViewController
 - (CGSize)preferredContentSize { return CGSizeZero; }
-- (void)viewDidLoad { %orig; self.view.hidden = YES; self.view.alpha = 0; }
+- (void)viewDidLoad {
+    %orig;
+    hideViewOf(self);
+}
 %end
