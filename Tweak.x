@@ -1,34 +1,58 @@
 #import <UIKit/UIKit.h>
 
-// 1. Hook 顶层指示器/Header 容器
+// 1. 在最顶端显式声明父类，解决 forward class 编译错误
+@interface RPCCAudioSettingsModuleViewController : UIViewController
+@end
+
+@interface RPCCVideoSettingsModuleViewController : UIViewController
+@end
+
+@interface CCUIModularControlCenterOverlayViewController : UIViewController
+@end
+
+// 2. 彻底禁用音频/视频控制模块的加载与渲染
 %hook RPCCAudioSettingsModuleViewController
+
 - (void)viewDidLoad {
     %orig;
     self.view.hidden = YES;
-    self.view.frame = CGRectZero;
 }
+
+// 阻止其向父容器请求分配高度空间
+- (BOOL)_canShowWhileLocked {
+    return NO;
+}
+
 %end
 
 %hook RPCCVideoSettingsModuleViewController
+
 - (void)viewDidLoad {
     %orig;
     self.view.hidden = YES;
-    self.view.frame = CGRectZero;
 }
+
+- (BOOL)_canShowWhileLocked {
+    return NO;
+}
+
 %end
 
-// 2. 强行改变控制中心顶部 Header 的高度分布
+// 3. 拦截顶层容器，将顶部 Header 占位高度直接清零
 %hook CCUIModularControlCenterOverlayViewController
 
 - (void)viewWillLayoutSubviews {
     %orig;
-    // 强制刷新主视图的 layout，消除顶部 margin
+    
+    // 遍历 overlay 的子视图，将 Header 区域的高度清零，使下方的控制组件自然向上贴紧
     UIView *overlayView = self.view;
     for (UIView *subview in overlayView.subviews) {
-        NSString *cls = NSStringFromClass([subview class]);
-        if ([cls containsString:@"Header"] || [cls containsString:@"Sensor"] || [cls containsString:@"Top"]) {
+        NSString *clsName = NSStringFromClass([subview class]);
+        if ([clsName containsString:@"Header"] || [clsName containsString:@"Sensor"] || [clsName containsString:@"RPCC"]) {
             subview.hidden = YES;
-            subview.frame = CGRectZero;
+            CGRect frame = subview.frame;
+            frame.size.height = 0;
+            subview.frame = frame;
         }
     }
 }
