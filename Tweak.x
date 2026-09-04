@@ -23,18 +23,25 @@ static void compress(UIView *v) {
     }
 }
 
-#pragma mark - 第一层：你原始的隐藏逻辑（已验证有效，保留不动）
+static void setViewOf(id selfObj, UIView *v) {
+    [selfObj setValue:v forKey:@"view"];
+}
+
+static UIView *getViewOf(id selfObj) {
+    return [selfObj valueForKey:@"view"];
+}
+
+#pragma mark - 第一层：隐藏模块
 %hook RPCCAudioSettingsModuleViewController
 - (void)loadView {
     UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
     emptyView.hidden = YES;
     emptyView.userInteractionEnabled = NO;
-    self.view = emptyView;
+    setViewOf(self, emptyView);
 }
 - (void)viewDidLoad {
     %orig;
-    id s = self;
-    UIView *v = [s valueForKey:@"view"];
+    UIView *v = getViewOf(self);
     v.hidden = YES; v.alpha = 0; v.frame = CGRectZero;
 }
 - (CGSize)preferredContentSize {
@@ -48,12 +55,11 @@ static void compress(UIView *v) {
     UIView *emptyView = [[UIView alloc] initWithFrame:CGRectZero];
     emptyView.hidden = YES;
     emptyView.userInteractionEnabled = NO;
-    self.view = emptyView;
+    setViewOf(self, emptyView);
 }
 - (void)viewDidLoad {
     %orig;
-    id s = self;
-    UIView *v = [s valueForKey:@"view"];
+    UIView *v = getViewOf(self);
     v.hidden = YES; v.alpha = 0; v.frame = CGRectZero;
 }
 - (CGSize)preferredContentSize {
@@ -62,21 +68,19 @@ static void compress(UIView *v) {
 }
 %end
 
-#pragma mark - 第二层：容器层面压缩（CCUIContentModuleContainerViewController 类名你原始代码已验证存在）
+#pragma mark - 第二层：容器层面压缩
 %hook CCUIContentModuleContainerViewController
 - (void)viewDidLayoutSubviews {
     %orig;
-    id s = self;
-    NSArray *children = [s valueForKey:@"childViewControllers"];
+    NSArray *children = [self valueForKey:@"childViewControllers"];
     id child = children.firstObject;
     if(!isTargetClass(child)) return;
 
     NSLog(@"[HideAV] [L2] container hit: %@", NSStringFromClass([child class]));
 
-    UIView *containerView = [s valueForKey:@"view"];
+    UIView *containerView = getViewOf(self);
     compress(containerView);
 
-    // 往上压3层：contentView → cell → （可能还有一层）
     UIView *sv = containerView.superview;
     for(int i = 0; sv && i < 3; i++) {
         compress(sv);
@@ -85,11 +89,10 @@ static void compress(UIView *v) {
 }
 %end
 
-#pragma mark - 第三层：UICollectionView 兜底（标准 UIKit 类，100% 存在）
+#pragma mark - 第三层：UICollectionView 兜底
 %hook UICollectionView
 - (void)layoutSubviews {
     %orig;
-    // 只处理控制中心的 collectionView
     UIResponder *r = self.nextResponder;
     BOOL isCC = NO;
     while(r) {
