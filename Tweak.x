@@ -1,38 +1,36 @@
 #import <UIKit/UIKit.h>
 
-@interface CCUIModuleCollectionViewController : UIViewController
-@property (nonatomic, copy) NSArray *moduleIdentifiers;
-@end
-
-static BOOL isTargetModule(NSString *identifier) {
-    if (!identifier) return NO;
-    return [identifier containsString:@"AudioConferenceControlCenter"] ||
-           [identifier containsString:@"VideoConferenceControlCenter"];
+// 1. Hook 顶层指示器/Header 容器
+%hook RPCCAudioSettingsModuleViewController
+- (void)viewDidLoad {
+    %orig;
+    self.view.hidden = YES;
+    self.view.frame = CGRectZero;
 }
+%end
 
-%hook CCUIModuleCollectionViewController
+%hook RPCCVideoSettingsModuleViewController
+- (void)viewDidLoad {
+    %orig;
+    self.view.hidden = YES;
+    self.view.frame = CGRectZero;
+}
+%end
 
-// 拦截 Setter 方法：当系统传入模块列表时，直接过滤掉录音/视频模块
-- (void)setModuleIdentifiers:(NSArray *)moduleIdentifiers {
-    NSMutableArray *filtered = [NSMutableArray array];
-    for (NSString *identifier in moduleIdentifiers) {
-        if (!isTargetModule(identifier)) {
-            [filtered addObject:identifier];
+// 2. 强行改变控制中心顶部 Header 的高度分布
+%hook CCUIModularControlCenterOverlayViewController
+
+- (void)viewWillLayoutSubviews {
+    %orig;
+    // 强制刷新主视图的 layout，消除顶部 margin
+    UIView *overlayView = self.view;
+    for (UIView *subview in overlayView.subviews) {
+        NSString *cls = NSStringFromClass([subview class]);
+        if ([cls containsString:@"Header"] || [cls containsString:@"Sensor"] || [cls containsString:@"Top"]) {
+            subview.hidden = YES;
+            subview.frame = CGRectZero;
         }
     }
-    %orig([filtered copy]);
-}
-
-// 拦截 Getter 方法兜底
-- (NSArray *)moduleIdentifiers {
-    NSArray *orig = %orig;
-    NSMutableArray *filtered = [NSMutableArray array];
-    for (NSString *identifier in orig) {
-        if (!isTargetModule(identifier)) {
-            [filtered addObject:identifier];
-        }
-    }
-    return [filtered copy];
 }
 
 %end
