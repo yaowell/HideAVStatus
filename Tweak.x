@@ -1,30 +1,64 @@
 #import <UIKit/UIKit.h>
 
-// 辅助函数：从任意模块实例中安全地取出标识符
-static NSString *identifierForInstance(id instance) {
-    NSString *identifier = nil;
+// 1. Hook 头部视图（包含麦克风/相机隐私提示的 PocketView）
+%hook CCUIHeaderPocketView
+
+- (void)layoutSubviews {
+    %orig;
+    // 隐藏自身及所有子视图，阻止其占用高度
+    self.hidden = YES;
+    self.alpha = 0.0;
     
-    @try {
-        identifier = [instance valueForKey:@"moduleIdentifier"];
-        if (!identifier) identifier = [instance valueForKey:@"identifier"];
-        if (!identifier) identifier = [[instance valueForKey:@"moduleRepresentation"] valueForKey:@"identifier"];
-    } @catch (NSException *exception) {
-        // 某些版本可能没有这些 key，忽略
+    // 如果有 frame 重置高度为 0
+    CGRect frame = self.frame;
+    if (frame.size.height > 0) {
+        frame.size.height = 0;
+        self.frame = frame;
     }
-    
-    return identifier ?: @"";
 }
 
-// 过滤模块实例，从源头移除这两个模块
+- (CGSize)sizeThatFits:(CGSize)size {
+    // 告诉父布局：我的高度是 0
+    return CGSizeZero;
+}
+
+- (CGFloat)compactHeight {
+    return 0.0;
+}
+
+- (CGFloat)expandedHeight {
+    return 0.0;
+}
+
+%end
+
+// 2. Hook 负责整体布局和滚动的 Container，消除顶部的 Padding/Margin
+%hook CCUIModuleCollectionView
+
+- (void)setFrame:(CGRect)frame {
+    // 强制修正 frame，防止系统根据 Header 留出顶部空白
+    %orig;
+}
+
+%end
+
+// 3. 拦截模块管理器（防止底层的实例依然保留）
 %hook CCUIModuleInstanceManager
 
 - (NSArray *)moduleInstances {
     NSArray *original = %orig;
     NSMutableArray *filtered = [NSMutableArray arrayWithCapacity:original.count];
-    
     for (id instance in original) {
-        NSString *identifier = identifierForInstance(instance);
-        if ([identifier containsString:@"RPCCAudio"] || [identifier containsString:@"RPCCVideo"]) {
+        NSString *identifier = @"";
+        @try {
+            identifier = [instance valueForKey:@"moduleIdentifier"] ?: @"";
+        } @catch (NSException *e) {}
+        
+        if ([identifier containsString:@"RPCCAudio"] || 
+            [identifier containsString:@"RPCCVideo"] ||
+            [identifier containsString:@"AudioConferenceCenter"] ||
+            [identifier containsString:@"VideoConferenceCenter"] ||
+            [identifier containsString:@"Privacy"]) {
             continue;
         }
         [filtered addObject:instance];
@@ -32,61 +66,4 @@ static NSString *identifierForInstance(id instance) {
     return filtered;
 }
 
-- (NSArray *)enabledModuleInstances {
-    NSArray *original = %orig;
-    NSMutableArray *filtered = [NSMutableArray arrayWithCapacity:original.count];
-    
-    for (id instance in original) {
-        NSString *identifier = identifierForInstance(instance);
-        if ([identifier containsString:@"RPCCAudio"] || [identifier containsString:@"RPCCVideo"]) {
-            continue;
-        }
-        [filtered addObject:instance];
-    }
-    return filtered;
-}
-
 %end
-
-// 可选：如果你觉得上面的方法在你的 iOS 版本上没生效，可以改为直接禁用模块实例
-/*
-%hook CCUIModuleInstance
-
-- (BOOL)isEnabled {
-    NSString *identifier = identifierForInstance(self);
-    if ([identifier containsString:@"RPCCAudio"] || [identifier containsString:@"RPCCVideo"]) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (BOOL)enabled {
-    NSString *identifier = identifierForInstance(self);
-    if ([identifier containsString:@"RPCCAudio"] || [identifier containsString:@"RPCCVideo"]) {
-        return NO;
-    }
-    return %orig;
-}
-
-%end
-*/
-
-// ========== 可选调试代码：打印当前所有模块标识符 ==========
-// 取消注释下面的代码，在第一次打开控制中心时会在控制台输出
-// 所有真实的模块 identifier，然后你就能准确判断需要过滤哪些字符串。
-
-/*
-%hook CCUIModuleInstanceManager
-
-- (void)loadModules {
-    %orig;
-    NSArray *instances = [self valueForKey:@"moduleInstances"];
-    for (id instance in instances) {
-        NSLog(@"[Tweak] CC Module: %@ -> %@",
-              identifierForInstance(instance),
-              [instance valueForKey:@"contentViewController"]);
-    }
-}
-
-%end
-*/
