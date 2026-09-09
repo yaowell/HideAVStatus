@@ -1,9 +1,2 @@
 #!/bin/sh
-
-TOOL="/var/jb/usr/bin/RestoreAVControls"
-
-if [ -x "$TOOL" ]; then
-    "$TOOL"
-fi
-
 exit 0
