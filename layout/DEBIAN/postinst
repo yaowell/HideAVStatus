@@ -15,12 +15,13 @@ VIDEO_ABSENT="$BACKUP_DIR/VideoConferenceControlCenterModule.absent"
 # 创建备份目录
 mkdir -p "$BACKUP_DIR"
 
+
 # =========================
 # Audio
 # =========================
 
 if [ -f "$AUDIO_BACKUP" ] || [ -f "$AUDIO_ABSENT" ]; then
-    # 已经有安装前状态，不重复覆盖
+    # 已经存在安装前状态，不重复覆盖
     true
 else
     if [ -f "$AUDIO" ]; then
@@ -36,7 +37,7 @@ fi
 # =========================
 
 if [ -f "$VIDEO_BACKUP" ] || [ -f "$VIDEO_ABSENT" ]; then
-    # 已经有安装前状态，不重复覆盖
+    # 已经存在安装前状态，不重复覆盖
     true
 else
     if [ -f "$VIDEO" ]; then
