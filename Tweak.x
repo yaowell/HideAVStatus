@@ -1,61 +1,41 @@
 #import <Foundation/Foundation.h>
-#import <UIKit/UIKit.h>
 
-// 声明系统的 ManagedConfiguration 私有接口
+// 声明 iOS 系统原生的管理配置私有接口
 @interface MCProfileConnection : NSObject
 + (instancetype)sharedConnection;
-- (void)refreshManagedPreferences;
+- (void)removePreferencesForDomain:(NSString *)domain; // 彻底清除某个域的限制
+- (void)refreshManagedPreferences;                      // 强制刷新系统偏好
 @end
 
-static NSString * const kAudioModule = @"/var/Managed Preferences/mobile/com.apple.replaykit.AudioConferenceControlCenterModule.plist";
-static NSString * const kVideoModule = @"/var/Managed Preferences/mobile/com.apple.replaykit.VideoConferenceControlCenterModule.plist";
-
-// 强行清理硬盘上的 plist 文件
-static void BMCleanupPlists(void) {
+static void BMRestoreViaSystemAPI(void) {
+    // 1. 物理删除磁盘残留文件
     NSFileManager *fm = [NSFileManager defaultManager];
-    [fm removeItemAtPath:kAudioModule error:nil];
-    [fm removeItemAtPath:kVideoModule error:nil];
-}
+    [fm removeItemAtPath:@"/var/Managed Preferences/mobile/com.apple.replaykit.AudioConferenceControlCenterModule.plist" error:nil];
+    [fm removeItemAtPath:@"/var/Managed Preferences/mobile/com.apple.replaykit.VideoConferenceControlCenterModule.plist" error:nil];
 
-// 强制刷新系统内存里的配置缓存
-static void BMForceRefreshSystemPreferences(void) {
-    BMCleanupPlists();
-
-    // 1. 通过系统 MCProfileConnection 强行刷内存配置
+    // 2. 调用系统底层 API 强行抹除内存中的限制域
     Class mcClass = NSClassFromString(@"MCProfileConnection");
     if (mcClass && [mcClass respondsToSelector:@selector(sharedConnection)]) {
         MCProfileConnection *conn = [mcClass sharedConnection];
+        
+        // 清除 Audio 模块的管理偏好域
+        if ([conn respondsToSelector:@selector(removePreferencesForDomain:)]) {
+            [conn removePreferencesForDomain:@"com.apple.replaykit.AudioConferenceControlCenterModule"];
+            [conn removePreferencesForDomain:@"com.apple.replaykit.VideoConferenceControlCenterModule"];
+        }
+        
+        // 刷新偏好设置数据库
         if ([conn respondsToSelector:@selector(refreshManagedPreferences)]) {
             [conn refreshManagedPreferences];
         }
     }
-
-    // 2. 发送系统层级的偏好设置变更通知
-    CFNotificationCenterPostNotification(
-        CFNotificationCenterGetDarwinNotifyCenter(),
-        CFSTR("com.apple.managedconfiguration.profilelistchanged"),
-        NULL,
-        NULL,
-        YES
-    );
 }
-
-%hook CCUIHeaderPocketView
-- (void)layoutSubviews {
-    %orig;
-    // 只要控制中心准备展开 layout，就强行触发一次刷新
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        BMForceRefreshSystemPreferences();
-    });
-}
-%end
 
 %ctor {
     @autoreleasepool {
         NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
         if ([bundleID isEqualToString:@"com.apple.springboard"]) {
-            BMForceRefreshSystemPreferences();
+            BMRestoreViaSystemAPI();
         }
     }
 }
