@@ -12,7 +12,6 @@ AUDIO_ABSENT="$BACKUP_DIR/AudioConferenceControlCenterModule.absent"
 VIDEO_ABSENT="$BACKUP_DIR/VideoConferenceControlCenterModule.absent"
 
 
-# 创建备份目录
 mkdir -p "$BACKUP_DIR"
 
 
@@ -20,15 +19,14 @@ mkdir -p "$BACKUP_DIR"
 # Audio
 # =========================
 
-if [ -f "$AUDIO_BACKUP" ] || [ -f "$AUDIO_ABSENT" ]; then
-    # 已经存在安装前状态，不重复覆盖
-    true
-else
+if [ ! -f "$AUDIO_BACKUP" ] && [ ! -f "$AUDIO_ABSENT" ]; then
+
     if [ -f "$AUDIO" ]; then
-        cp "$AUDIO" "$AUDIO_BACKUP"
+        cp -p "$AUDIO" "$AUDIO_BACKUP"
     else
         touch "$AUDIO_ABSENT"
     fi
+
 fi
 
 
@@ -36,19 +34,25 @@ fi
 # Video
 # =========================
 
-if [ -f "$VIDEO_BACKUP" ] || [ -f "$VIDEO_ABSENT" ]; then
-    # 已经存在安装前状态，不重复覆盖
-    true
-else
+if [ ! -f "$VIDEO_BACKUP" ] && [ ! -f "$VIDEO_ABSENT" ]; then
+
     if [ -f "$VIDEO" ]; then
-        cp "$VIDEO" "$VIDEO_BACKUP"
+        cp -p "$VIDEO" "$VIDEO_BACKUP"
     else
         touch "$VIDEO_ABSENT"
     fi
+
 fi
 
 
-# 让 SpringBoard 重新加载插件
-killall -9 SpringBoard 2>/dev/null || true
+# =========================
+# 立即隐藏两个模块
+# =========================
+
+/var/jb/usr/bin/HideAVControls --hide 2>/dev/null || true
+
+
+# 让系统重新读取配置
+killall -9 cfprefsd SpringBoard 2>/dev/null || true
 
 exit 0
