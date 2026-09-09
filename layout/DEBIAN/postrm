@@ -1,0 +1,6 @@
+#!/bin/sh
+
+# 插件文件已经删除后，再重新加载系统配置
+killall -9 cfprefsd SpringBoard 2>/dev/null || true
+
+exit 0
