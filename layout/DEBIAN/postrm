@@ -6,6 +6,12 @@ if [ -x "$TOOL" ]; then
     "$TOOL"
 fi
 
+# RestoreAVControls 已经删除 SBIconVisibility 并同步 CFPreferences
+# 这里再重新加载系统配置
+killall -9 cfprefsd 2>/dev/null || true
+killall -9 SpringBoard 2>/dev/null || true
+
+# 删除旧备份，避免以后再次覆盖恢复状态
 rm -rf "/var/mobile/Library/HideAVControlsBackup"
 
 exit 0
