@@ -7,6 +7,6 @@ TWEAK_NAME = HideAVControls
 
 HideAVControls_FILES = Tweak.x
 HideAVControls_CFLAGS = -fobjc-arc
-HideAVControls_FRAMEWORKS = UIKit
+HideAVControls_FRAMEWORKS = UIKit Foundation
 
 include $(THEOS)/makefiles/tweak.mk
