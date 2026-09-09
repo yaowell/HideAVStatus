@@ -1,41 +1,113 @@
 #import <Foundation/Foundation.h>
 
-// 声明 iOS 系统原生的管理配置私有接口
-@interface MCProfileConnection : NSObject
-+ (instancetype)sharedConnection;
-- (void)removePreferencesForDomain:(NSString *)domain; // 彻底清除某个域的限制
-- (void)refreshManagedPreferences;                      // 强制刷新系统偏好
-@end
+static NSString * const kManagedDir =
+    @"/var/Managed Preferences/mobile";
 
-static void BMRestoreViaSystemAPI(void) {
-    // 1. 物理删除磁盘残留文件
+static NSString * const kAudioModule =
+    @"/var/Managed Preferences/mobile/com.apple.replaykit.AudioConferenceControlCenterModule.plist";
+
+static NSString * const kVideoModule =
+    @"/var/Managed Preferences/mobile/com.apple.replaykit.VideoConferenceControlCenterModule.plist";
+
+
+static void BMHideModule(NSString *path)
+{
     NSFileManager *fm = [NSFileManager defaultManager];
-    [fm removeItemAtPath:@"/var/Managed Preferences/mobile/com.apple.replaykit.AudioConferenceControlCenterModule.plist" error:nil];
-    [fm removeItemAtPath:@"/var/Managed Preferences/mobile/com.apple.replaykit.VideoConferenceControlCenterModule.plist" error:nil];
 
-    // 2. 调用系统底层 API 强行抹除内存中的限制域
-    Class mcClass = NSClassFromString(@"MCProfileConnection");
-    if (mcClass && [mcClass respondsToSelector:@selector(sharedConnection)]) {
-        MCProfileConnection *conn = [mcClass sharedConnection];
-        
-        // 清除 Audio 模块的管理偏好域
-        if ([conn respondsToSelector:@selector(removePreferencesForDomain:)]) {
-            [conn removePreferencesForDomain:@"com.apple.replaykit.AudioConferenceControlCenterModule"];
-            [conn removePreferencesForDomain:@"com.apple.replaykit.VideoConferenceControlCenterModule"];
+    // 读取已有 plist
+    NSMutableDictionary *plist =
+        [NSMutableDictionary dictionaryWithContentsOfFile:path];
+
+    if (plist == nil) {
+        plist = [NSMutableDictionary dictionary];
+    }
+
+    // 已经是隐藏状态，就不再重复写入
+    id visibility = plist[@"SBIconVisibility"];
+
+    BOOL alreadyHidden =
+        [visibility respondsToSelector:@selector(boolValue)] &&
+        ![visibility boolValue];
+
+    if (!alreadyHidden) {
+
+        plist[@"SBIconVisibility"] = @NO;
+
+        BOOL success =
+            [plist writeToFile:path atomically:YES];
+
+        if (!success) {
+            NSLog(@"[HideReplayKitCC] WRITE FAILED: %@",
+                  path);
+            return;
         }
-        
-        // 刷新偏好设置数据库
-        if ([conn respondsToSelector:@selector(refreshManagedPreferences)]) {
-            [conn refreshManagedPreferences];
+
+        NSLog(@"[HideReplayKitCC] HIDDEN: %@",
+              path);
+    }
+
+    // 只有权限不是 0644 时才修改
+    NSDictionary *attributes =
+        [fm attributesOfItemAtPath:path error:nil];
+
+    NSNumber *permissions =
+        attributes[NSFilePosixPermissions];
+
+    if (permissions == nil ||
+        [permissions unsignedShortValue] != 0644) {
+
+        [fm setAttributes:@{
+            NSFilePosixPermissions : @0644
         }
+        ofItemAtPath:path
+        error:nil];
     }
 }
 
-%ctor {
-    @autoreleasepool {
-        NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
-        if ([bundleID isEqualToString:@"com.apple.springboard"]) {
-            BMRestoreViaSystemAPI();
+
+static void BMApply(void)
+{
+    NSFileManager *fm = [NSFileManager defaultManager];
+
+    // 确保目录存在
+    BOOL isDir = NO;
+
+    if (![fm fileExistsAtPath:kManagedDir
+                  isDirectory:&isDir]) {
+
+        NSError *error = nil;
+
+        BOOL created =
+            [fm createDirectoryAtPath:kManagedDir
+          withIntermediateDirectories:YES
+                           attributes:@{
+                               NSFilePosixPermissions : @0755
+                           }
+                                error:&error];
+
+        if (!created) {
+            NSLog(@"[HideReplayKitCC] CREATE DIR FAILED: %@",
+                  error);
+            return;
         }
+    }
+
+    BMHideModule(kAudioModule);
+    BMHideModule(kVideoModule);
+}
+
+
+%ctor
+{
+    @autoreleasepool {
+
+        NSString *bundleID =
+            [[NSBundle mainBundle] bundleIdentifier];
+
+        if (![bundleID isEqualToString:@"com.apple.springboard"]) {
+            return;
+        }
+
+        BMApply();
     }
 }
