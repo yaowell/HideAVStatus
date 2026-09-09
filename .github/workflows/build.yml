@@ -36,9 +36,19 @@ jobs:
             cp -R "$SDK_PATH/System/Library/PrivateFrameworks/Preferences.framework" $HOME/theos/sdks/iPhoneOS16.5.sdk/System/Library/PrivateFrameworks/ || true
           fi
 
+      - name: Fix Maintainer Script Permissions
+        run: |
+          chmod 755 layout/DEBIAN/postinst
+          chmod 755 layout/DEBIAN/prerm
+
       - name: Build Roothide Package
         run: |
           make clean package THEOS_PACKAGE_SCHEME=roothide SYSROOT=$HOME/theos/sdks/iPhoneOS16.5.sdk FINALPACKAGE=1
+
+      - name: Fix Maintainer Script Permissions Again
+        run: |
+          chmod 755 layout/DEBIAN/postinst
+          chmod 755 layout/DEBIAN/prerm
 
       - name: Build Rootless Package
         run: |
