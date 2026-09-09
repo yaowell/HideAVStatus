@@ -1,36 +1,51 @@
 #import <Foundation/Foundation.h>
-#import <CoreFoundation/CoreFoundation.h>
+#import <UIKit/UIKit.h>
+#import <unistd.h>
 
-// 1. 拦截系统读取偏好设置的底层 API，强行给这两个 Module 返回 NO (False)
-%hookf(Boolean, CFPreferencesGetAppBooleanValue, CFStringRef key, CFStringRef applicationID, Boolean *keyExistsAndHasValidFormat) {
-    if (key && applicationID) {
-        NSString *keyStr = (__bridge NSString *)key;
-        NSString *appIDStr = (__bridge NSString *)applicationID;
-        
-        if ([keyStr isEqualToString:@"SBIconVisibility"]) {
-            if ([appIDStr isEqualToString:@"com.apple.replaykit.AudioConferenceControlCenterModule"] ||
-                [appIDStr isEqualToString:@"com.apple.replaykit.VideoConferenceControlCenterModule"]) {
-                if (keyExistsAndHasValidFormat) *keyExistsAndHasValidFormat = true;
-                return false; // 强行返回 false
-            }
-        }
+static NSString * const kAudioModule =
+    @"/var/Managed Preferences/mobile/com.apple.replaykit.AudioConferenceControlCenterModule.plist";
+
+static NSString * const kVideoModule =
+    @"/var/Managed Preferences/mobile/com.apple.replaykit.VideoConferenceControlCenterModule.plist";
+
+static void BMHideModule(NSString *path)
+{
+    NSMutableDictionary *plist =
+        [NSMutableDictionary dictionaryWithContentsOfFile:path];
+
+    if (plist == nil) {
+        plist = [NSMutableDictionary dictionary];
     }
-    return %orig(key, applicationID, keyExistsAndHasValidFormat);
+
+    // 设置为 Cowabunga Lite 的隐藏对应值
+    plist[@"SBIconVisibility"] = @NO;
+
+    BOOL success = [plist writeToFile:path atomically:YES];
+
+    NSLog(@"[HideReplayKitCC] %@ : %@",
+          path,
+          success ? @"HIDDEN" : @"WRITE FAILED");
 }
 
-// 2. 插件加载时，直接给系统磁盘配置持久化写入 SBIconVisibility = false
-%ctor {
+static void BMApply(void)
+{
+    BMHideModule(kAudioModule);
+    BMHideModule(kVideoModule);
+}
+
+%ctor
+{
     @autoreleasepool {
-        CFStringRef key = CFSTR("SBIconVisibility");
-        CFStringRef audioID = CFSTR("com.apple.replaykit.AudioConferenceControlCenterModule");
-        CFStringRef videoID = CFSTR("com.apple.replaykit.VideoConferenceControlCenterModule");
+        NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
 
-        // 写入 Audio 模块
-        CFPreferencesSetAppValue(key, kCFBooleanFalse, audioID);
-        CFPreferencesAppSynchronize(audioID);
+        if (![bundleID isEqualToString:@"com.apple.springboard"]) {
+            return;
+        }
 
-        // 写入 Video 模块
-        CFPreferencesSetAppValue(key, kCFBooleanFalse, videoID);
-        CFPreferencesAppSynchronize(videoID);
+        /*
+         * 在 SpringBoard 初始化时写入文件。
+         * 不 Hook UI，不循环监听，零常驻功耗。
+         */
+        BMApply();
     }
 }
