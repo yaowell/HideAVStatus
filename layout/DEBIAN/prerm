@@ -1,13 +1,9 @@
 #!/bin/sh
 
-# 卸载前恢复两个 Control Center 模块
 TOOL="/var/jb/usr/bin/RestoreAVControls"
 
 if [ -x "$TOOL" ]; then
     "$TOOL"
 fi
-
-# 让 Control Center / SpringBoard 重新读取配置
-killall SpringBoard 2>/dev/null || true
 
 exit 0
