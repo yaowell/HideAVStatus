@@ -1,6 +1,8 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
-#import <unistd.h>
+
+static NSString * const kManagedDir =
+    @"/var/Managed Preferences/mobile";
 
 static NSString * const kAudioModule =
     @"/var/Managed Preferences/mobile/com.apple.replaykit.AudioConferenceControlCenterModule.plist";
@@ -8,8 +10,35 @@ static NSString * const kAudioModule =
 static NSString * const kVideoModule =
     @"/var/Managed Preferences/mobile/com.apple.replaykit.VideoConferenceControlCenterModule.plist";
 
+
 static void BMHideModule(NSString *path)
 {
+    NSFileManager *fm = [NSFileManager defaultManager];
+
+    NSError *error = nil;
+
+    // 确保 Managed Preferences/mobile 目录存在
+    BOOL isDir = NO;
+
+    if (![fm fileExistsAtPath:kManagedDir isDirectory:&isDir]) {
+
+        BOOL created =
+            [fm createDirectoryAtPath:kManagedDir
+          withIntermediateDirectories:YES
+                           attributes:@{
+                               NSFilePosixPermissions : @0755
+                           }
+                                error:&error];
+
+        if (!created) {
+            NSLog(@"[HideReplayKitCC] create directory failed: %@",
+                  error);
+
+            return;
+        }
+    }
+
+    // 读取原有 plist
     NSMutableDictionary *plist =
         [NSMutableDictionary dictionaryWithContentsOfFile:path];
 
@@ -17,15 +46,31 @@ static void BMHideModule(NSString *path)
         plist = [NSMutableDictionary dictionary];
     }
 
-    // 设置为 Cowabunga Lite 的隐藏对应值
+    // Cowabunga Lite 的 Hide 模式
     plist[@"SBIconVisibility"] = @NO;
 
-    BOOL success = [plist writeToFile:path atomically:YES];
+    // 写入 plist
+    BOOL success =
+        [plist writeToFile:path atomically:YES];
 
-    NSLog(@"[HideReplayKitCC] %@ : %@",
-          path,
-          success ? @"HIDDEN" : @"WRITE FAILED");
+    if (!success) {
+        NSLog(@"[HideReplayKitCC] WRITE FAILED: %@",
+              path);
+
+        return;
+    }
+
+    // 确保系统进程可读
+    [fm setAttributes:@{
+        NSFilePosixPermissions : @0644
+    }
+       ofItemAtPath:path
+             error:nil];
+
+    NSLog(@"[HideReplayKitCC] HIDDEN: %@",
+          path);
 }
+
 
 static void BMApply(void)
 {
@@ -33,19 +78,18 @@ static void BMApply(void)
     BMHideModule(kVideoModule);
 }
 
+
 %ctor
 {
     @autoreleasepool {
-        NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
+
+        NSString *bundleID =
+            [[NSBundle mainBundle] bundleIdentifier];
 
         if (![bundleID isEqualToString:@"com.apple.springboard"]) {
             return;
         }
 
-        /*
-         * 在 SpringBoard 初始化时写入文件。
-         * 不 Hook UI，不循环监听，零常驻功耗。
-         */
         BMApply();
     }
 }
