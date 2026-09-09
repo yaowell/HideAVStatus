@@ -15,44 +15,30 @@ VIDEO_ABSENT="$BACKUP_DIR/VideoConferenceControlCenterModule.absent"
 mkdir -p "$BACKUP_DIR"
 
 
-# =========================
 # Audio
-# =========================
-
-if [ ! -f "$AUDIO_BACKUP" ] && [ ! -f "$AUDIO_ABSENT" ]; then
-
+if [ -f "$AUDIO_BACKUP" ] || [ -f "$AUDIO_ABSENT" ]; then
+    true
+else
     if [ -f "$AUDIO" ]; then
-        cp -p "$AUDIO" "$AUDIO_BACKUP"
+        cp "$AUDIO" "$AUDIO_BACKUP"
     else
         touch "$AUDIO_ABSENT"
     fi
-
 fi
 
 
-# =========================
 # Video
-# =========================
-
-if [ ! -f "$VIDEO_BACKUP" ] && [ ! -f "$VIDEO_ABSENT" ]; then
-
+if [ -f "$VIDEO_BACKUP" ] || [ -f "$VIDEO_ABSENT" ]; then
+    true
+else
     if [ -f "$VIDEO" ]; then
-        cp -p "$VIDEO" "$VIDEO_BACKUP"
+        cp "$VIDEO" "$VIDEO_BACKUP"
     else
         touch "$VIDEO_ABSENT"
     fi
-
 fi
 
 
-# =========================
-# 立即隐藏两个模块
-# =========================
-
-/var/jb/usr/bin/HideAVControls --hide 2>/dev/null || true
-
-
-# 让系统重新读取配置
-killall -9 cfprefsd SpringBoard 2>/dev/null || true
+killall -9 SpringBoard 2>/dev/null || true
 
 exit 0
