@@ -1,3 +1,53 @@
 #!/bin/sh
 
+BACKUP_DIR="/var/mobile/Library/HideAVControlsBackup"
+
+AUDIO="/var/Managed Preferences/mobile/com.apple.replaykit.AudioConferenceControlCenterModule.plist"
+VIDEO="/var/Managed Preferences/mobile/com.apple.replaykit.VideoConferenceControlCenterModule.plist"
+
+AUDIO_BACKUP="$BACKUP_DIR/AudioConferenceControlCenterModule.plist"
+VIDEO_BACKUP="$BACKUP_DIR/VideoConferenceControlCenterModule.plist"
+
+AUDIO_ABSENT="$BACKUP_DIR/AudioConferenceControlCenterModule.absent"
+VIDEO_ABSENT="$BACKUP_DIR/VideoConferenceControlCenterModule.absent"
+
+
+# 创建备份目录
+mkdir -p "$BACKUP_DIR"
+
+# =========================
+# Audio
+# =========================
+
+if [ -f "$AUDIO_BACKUP" ] || [ -f "$AUDIO_ABSENT" ]; then
+    # 已经有安装前状态，不重复覆盖
+    true
+else
+    if [ -f "$AUDIO" ]; then
+        cp "$AUDIO" "$AUDIO_BACKUP"
+    else
+        touch "$AUDIO_ABSENT"
+    fi
+fi
+
+
+# =========================
+# Video
+# =========================
+
+if [ -f "$VIDEO_BACKUP" ] || [ -f "$VIDEO_ABSENT" ]; then
+    # 已经有安装前状态，不重复覆盖
+    true
+else
+    if [ -f "$VIDEO" ]; then
+        cp "$VIDEO" "$VIDEO_BACKUP"
+    else
+        touch "$VIDEO_ABSENT"
+    fi
+fi
+
+
+# 让 SpringBoard 重新加载插件
+killall -9 SpringBoard 2>/dev/null || true
+
 exit 0
