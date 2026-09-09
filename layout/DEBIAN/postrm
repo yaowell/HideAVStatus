@@ -1,0 +1,27 @@
+#!/bin/sh
+
+AUDIO="/var/Managed Preferences/mobile/com.apple.replaykit.AudioConferenceControlCenterModule.plist"
+VIDEO="/var/Managed Preferences/mobile/com.apple.replaykit.VideoConferenceControlCenterModule.plist"
+
+mkdir -p "/var/Managed Preferences/mobile"
+
+set_visible()
+{
+    FILE="$1"
+
+    if [ -f "$FILE" ]; then
+        /usr/libexec/PlistBuddy -c "Set :SBIconVisibility true" "$FILE" 2>/dev/null
+
+        if [ $? -ne 0 ]; then
+            /usr/libexec/PlistBuddy -c "Add :SBIconVisibility bool true" "$FILE" 2>/dev/null
+        fi
+
+        chmod 0644 "$FILE" 2>/dev/null
+        chown mobile:mobile "$FILE" 2>/dev/null
+    fi
+}
+
+set_visible "$AUDIO"
+set_visible "$VIDEO"
+
+exit 0
