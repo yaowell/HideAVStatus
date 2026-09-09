@@ -14,7 +14,7 @@ static void RestoreDefault(CFStringRef appID)
 {
     // 删除 SBIconVisibility
     // 不写 true，也不写 false
-    // 删除后才是 Control Center 的 Default / 动态状态
+    // 删除后恢复 Control Center 的 Default / 动态状态
     CFPreferencesSetValue(
         kVisibilityKey,
         NULL,
@@ -23,7 +23,7 @@ static void RestoreDefault(CFStringRef appID)
         kCFPreferencesAnyHost
     );
 
-    // 强制同步
+    // 立即同步到 CFPreferences
     CFPreferencesSynchronize(
         appID,
         kCFPreferencesCurrentUser,
@@ -36,13 +36,8 @@ static void RestoreDefault(CFStringRef appID)
 int main(int argc, char *argv[])
 {
     @autoreleasepool {
-
         RestoreDefault(kAudioAppID);
         RestoreDefault(kVideoAppID);
-
-        // 让 cfprefsd / SpringBoard 重新读取状态
-        system("killall -9 cfprefsd 2>/dev/null");
-        system("killall -9 SpringBoard 2>/dev/null");
     }
 
     return 0;
