@@ -1,7 +1,7 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
-static NSString *const kLogPath = @"/var/mobile/Documents/CC_ModuleProbe.log";
+static NSString *const kLogPath = @"/var/mobile/Documents/RPCC_ModuleMethods.log";
 
 static void CCWriteLog(NSString *text) {
     NSString *old = [NSString stringWithContentsOfFile:kLogPath
@@ -18,35 +18,32 @@ static void CCWriteLog(NSString *text) {
         error:nil];
 }
 
-%hook CCUIModuleInstance
+static void ScanClass(Class cls) {
+    if (!cls) return;
 
-- (id)module {
-    id result = %orig;
+    CCWriteLog(@"----------------------------------------------");
+    CCWriteLog([NSString stringWithFormat:
+        @"CLASS: %@", NSStringFromClass(cls)]);
+    CCWriteLog(@"----------------------------------------------");
 
-    @try {
-        NSString *moduleClass =
-            result ? NSStringFromClass([result class]) : @"(nil)";
+    unsigned int count = 0;
+    Method *methods = class_copyMethodList(cls, &count);
 
-        NSString *moduleDesc =
-            result ? [result description] : @"(nil)";
+    for (unsigned int i = 0; i < count; i++) {
+        SEL sel = method_getName(methods[i]);
+        const char *types = method_getTypeEncoding(methods[i]);
 
         CCWriteLog([NSString stringWithFormat:
-            @"[module] instance=%p moduleClass=%@ module=%@",
-            self,
-            moduleClass,
-            moduleDesc]);
-
-    } @catch (NSException *exception) {
-        CCWriteLog([NSString stringWithFormat:
-            @"[module] instance=%p EXCEPTION=%@",
-            self,
-            exception]);
+            @"  %@ | types=%s",
+            NSStringFromSelector(sel),
+            types ?: "(null)"]);
     }
 
-    return result;
-}
+    free(methods);
 
-%end
+    CCWriteLog([NSString stringWithFormat:
+        @"[Finished] methods=%u", count]);
+}
 
 %ctor {
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -55,8 +52,14 @@ static void CCWriteLog(NSString *text) {
                       error:nil];
 
         CCWriteLog(@"==============================================");
-        CCWriteLog(@"[CCUIModuleInstance module Probe]");
-        CCWriteLog(@"Mode: ORIGINAL VALUE ONLY");
+        CCWriteLog(@"[RPCC Module Method Scanner]");
+        CCWriteLog(@"==============================================");
+
+        ScanClass(NSClassFromString(@"RPCCAudioSettingsModule"));
+        ScanClass(NSClassFromString(@"RPCCVideoSettingsModule"));
+
+        CCWriteLog(@"==============================================");
+        CCWriteLog(@"[Finished]");
         CCWriteLog(@"==============================================");
     });
 }
