@@ -1,10 +1,19 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-static NSString *const kLogPath = @"/var/mobile/Documents/CC_RPCC_Classes.log";
+static NSString *const kLogPath = @"/var/mobile/Documents/CC_RPCC_Methods.log";
 
-static NSMutableSet *gFoundClasses;
-static dispatch_source_t gTimer;
+static NSArray *TargetClasses(void)
+{
+    return @[
+        @"RPCCVideoSettingsModule",
+        @"RPCCAudioSettingsModule",
+        @"RPCCVideoSettingsModuleBackgroundViewController",
+        @"RPCCAudioSettingsModuleBackgroundViewController",
+        @"RPCCVideoSettingsModuleViewController",
+        @"RPCCAudioSettingsModuleViewController"
+    ];
+}
 
 static void WriteLog(NSString *text)
 {
@@ -30,108 +39,127 @@ static void WriteLog(NSString *text)
     [file closeFile];
 }
 
-static BOOL IsTargetClass(NSString *name)
+static void ScanMethods(void)
 {
-    if (!name) return NO;
+    WriteLog(@"==============================================");
+    WriteLog(@"[RPCC Method Runtime Scanner]");
 
-    return
-        [name hasPrefix:@"RPCCAudio"] ||
-        [name hasPrefix:@"RPCCVideo"];
-}
+    for (NSString *className in TargetClasses()) {
 
-static void ScanRPCCClasses(void)
-{
-    unsigned int count = 0;
-    Class *classes = objc_copyClassList(&count);
+        Class cls = NSClassFromString(className);
 
-    if (!classes) return;
+        if (!cls) {
+            WriteLog([NSString stringWithFormat:
+                      @"[NOT FOUND] %@", className]);
+            continue;
+        }
 
-    for (unsigned int i = 0; i < count; i++) {
-        Class cls = classes[i];
+        WriteLog(@"");
+        WriteLog([NSString stringWithFormat:
+                  @"[CLASS] %@", className]);
 
-        if (!cls) continue;
+        unsigned int count = 0;
 
-        const char *cname = class_getName(cls);
+        Method *methods =
+            class_copyMethodList(cls, &count);
 
-        if (!cname) continue;
-
-        NSString *name =
-            [NSString stringWithUTF8String:cname];
-
-        if (!IsTargetClass(name)) continue;
-
-        if ([gFoundClasses containsObject:name]) continue;
-
-        [gFoundClasses addObject:name];
+        if (!methods) {
+            WriteLog(@"[No methods]");
+            continue;
+        }
 
         WriteLog([NSString stringWithFormat:
-                  @"[NEW CLASS] %@", name]);
+                  @"[Method Count] %u", count]);
+
+        NSMutableArray *names = [NSMutableArray array];
+
+        for (unsigned int i = 0; i < count; i++) {
+
+            Method method = methods[i];
+
+            if (!method) continue;
+
+            SEL selector =
+                method_getName(method);
+
+            if (!selector) continue;
+
+            NSString *name =
+                NSStringFromSelector(selector);
+
+            if (name) {
+                [names addObject:name];
+            }
+        }
+
+        free(methods);
+
+        [names sortUsingSelector:@selector(compare:)];
+
+        for (NSString *name in names) {
+            WriteLog([NSString stringWithFormat:
+                      @"  %@", name]);
+        }
     }
 
-    free(classes);
+    WriteLog(@"");
+    WriteLog(@"==============================================");
+    WriteLog(@"[Scan Finished]");
+    WriteLog(@"==============================================");
 }
 
 static void StartScanner(void)
 {
-    gFoundClasses = [NSMutableSet set];
-
     [[NSFileManager defaultManager]
         removeItemAtPath:kLogPath
         error:nil];
 
-    WriteLog(@"==============================================");
-    WriteLog(@"[RPCC Runtime Scanner]");
-    WriteLog(@"[Interval] 1 second");
-    WriteLog(@"[Duration] 60 seconds");
-    WriteLog(@"[Target] RPCCAudio / RPCCVideo");
-    WriteLog(@"[Mode] Observation only");
-    WriteLog(@"[Hook] NONE");
-    WriteLog(@"[Plist] NONE");
-    WriteLog(@"==============================================");
+    WriteLog(@"[Waiting for RPCC classes...]");
 
-    ScanRPCCClasses();
-
-    gTimer =
+    dispatch_source_t timer =
         dispatch_source_create(
             DISPATCH_SOURCE_TYPE_TIMER,
             0,
             0,
             dispatch_get_main_queue());
 
-    if (!gTimer) return;
+    if (!timer) return;
 
     dispatch_source_set_timer(
-        gTimer,
+        timer,
         dispatch_time(DISPATCH_TIME_NOW, 1 * NSEC_PER_SEC),
         1 * NSEC_PER_SEC,
         100 * NSEC_PER_MSEC);
 
-    dispatch_source_set_event_handler(gTimer, ^{
-        static int scanCount = 0;
+    dispatch_source_set_event_handler(timer, ^{
+        static int count = 0;
 
-        scanCount++;
+        count++;
 
-        ScanRPCCClasses();
+        BOOL found = NO;
 
-        if (scanCount >= 60) {
-            WriteLog(@"==============================================");
-            WriteLog(@"[Scanner Finished]");
-            WriteLog([NSString stringWithFormat:
-                      @"[RPCC classes found] %lu",
-                      (unsigned long)gFoundClasses.count]);
-            WriteLog(@"==============================================");
+        for (NSString *className in TargetClasses()) {
+            if (NSClassFromString(className)) {
+                found = YES;
+                break;
+            }
+        }
 
-            dispatch_source_cancel(gTimer);
-            gTimer = nil;
+        if (found || count >= 60) {
+
+            ScanMethods();
+
+            dispatch_source_cancel(timer);
         }
     });
 
-    dispatch_resume(gTimer);
+    dispatch_resume(timer);
 }
 
 %ctor
 {
     @autoreleasepool {
+
         NSString *bundleID =
             [[NSBundle mainBundle] bundleIdentifier];
 
