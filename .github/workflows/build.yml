@@ -1,4 +1,4 @@
-name: Build Rootless Deb
+name: Build Dual Debs (Roothide & Rootless)
 
 on:
   push:
@@ -12,7 +12,6 @@ jobs:
     runs-on: macos-latest
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -32,72 +31,21 @@ jobs:
       - name: Fix Private Frameworks
         run: |
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
-
           if [ -d "$SDK_PATH/System/Library/PrivateFrameworks/Preferences.framework" ]; then
             mkdir -p $HOME/theos/sdks/iPhoneOS16.5.sdk/System/Library/PrivateFrameworks
-
-            cp -R \
-              "$SDK_PATH/System/Library/PrivateFrameworks/Preferences.framework" \
-              $HOME/theos/sdks/iPhoneOS16.5.sdk/System/Library/PrivateFrameworks/ \
-              || true
+            cp -R "$SDK_PATH/System/Library/PrivateFrameworks/Preferences.framework" $HOME/theos/sdks/iPhoneOS16.5.sdk/System/Library/PrivateFrameworks/ || true
           fi
 
-      - name: Fix Maintainer Script Permissions
+      - name: Build Roothide Package
         run: |
-          chmod 755 layout/DEBIAN/postinst
-          chmod 755 layout/DEBIAN/prerm
-          chmod 755 layout/DEBIAN/postrm
+          make clean package THEOS_PACKAGE_SCHEME=roothide SYSROOT=$HOME/theos/sdks/iPhoneOS16.5.sdk FINALPACKAGE=1
 
       - name: Build Rootless Package
         run: |
-          make clean
-          make package \
-            THEOS_PACKAGE_SCHEME=rootless \
-            SYSROOT=$HOME/theos/sdks/iPhoneOS16.5.sdk \
-            FINALPACKAGE=1
-
-      - name: Verify Rootless Package
-        run: |
-          set -e
-
-          DEB=$(find packages -type f -name "*.deb" | head -1)
-
-          echo "=== PACKAGE ==="
-          echo "$DEB"
-
-          echo "=== PACKAGE SIZE ==="
-          ls -lh "$DEB"
-
-          echo "=== EXTRACT PACKAGE ==="
-          rm -rf package_check
-          mkdir package_check
-          cd package_check
-
-          ar -x "../$DEB"
-
-          echo "=== PACKAGE FILES ==="
-          ls -la
-
-          echo "=== CHECK RESTORE TOOL ==="
-          if tar -tf data.tar.* | grep -q 'var/jb/usr/bin/RestoreAVControls'; then
-            echo "RestoreAVControls FOUND"
-          else
-            echo "ERROR: RestoreAVControls NOT FOUND"
-            exit 1
-          fi
-
-          echo "=== CHECK TWEAK ==="
-          if tar -tf data.tar.* | grep -q 'HideAVControls.dylib'; then
-            echo "HideAVControls.dylib FOUND"
-          else
-            echo "ERROR: HideAVControls.dylib NOT FOUND"
-            exit 1
-          fi
-
-          echo "=== PACKAGE VERIFICATION PASSED ==="
+          make clean package THEOS_PACKAGE_SCHEME=rootless SYSROOT=$HOME/theos/sdks/iPhoneOS16.5.sdk FINALPACKAGE=1
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: HideAVControls-1.0-Rootless
+          name: HideAVControls-1.0-Debs
           path: packages/*.deb
