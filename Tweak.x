@@ -1,108 +1,71 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
-static NSString *const kLogPath = @"/var/mobile/Documents/RPCC_VCProbe.log";
+typedef struct {
+    NSUInteger width;
+    NSUInteger height;
+} CCUILayoutSize;
 
-static void CCWriteLog(NSString *text) {
-    NSString *old = [NSString stringWithContentsOfFile:kLogPath
-                                               encoding:NSUTF8StringEncoding
-                                                  error:nil];
-    if (!old) old = @"";
-
-    NSString *line = [NSString stringWithFormat:@"%@\n", text];
-
-    [[old stringByAppendingString:line]
-        writeToFile:kLogPath
-        atomically:YES
-        encoding:NSUTF8StringEncoding
-        error:nil];
-}
-
-%hook RPCCAudioSettingsModule
-
-- (id)contentViewControllerForContext:(id)context {
-    id result = %orig;
+static BOOL IsRPCCModule(id instance) {
+    if (!instance) return NO;
 
     @try {
-        CCWriteLog([NSString stringWithFormat:
-            @"[AUDIO contentVC] result=%p class=%@ object=%@",
-            result,
-            result ? NSStringFromClass([result class]) : @"(nil)",
-            result ?: @"(nil)"]);
-    } @catch (NSException *exception) {
-        CCWriteLog([NSString stringWithFormat:
-            @"[AUDIO contentVC] EXCEPTION=%@", exception]);
-    }
+        id module = [instance module];
+        if (!module) return NO;
 
-    return result;
+        NSString *name = NSStringFromClass([module class]);
+
+        return [name isEqualToString:@"RPCCAudioSettingsModule"] ||
+               [name isEqualToString:@"RPCCVideoSettingsModule"];
+    } @catch (NSException *exception) {
+        return NO;
+    }
 }
 
-- (id)backgroundViewControllerForContext:(id)context {
-    id result = %orig;
-
-    @try {
-        CCWriteLog([NSString stringWithFormat:
-            @"[AUDIO backgroundVC] result=%p class=%@ object=%@",
-            result,
-            result ? NSStringFromClass([result class]) : @"(nil)",
-            result ?: @"(nil)"]);
-    } @catch (NSException *exception) {
-        CCWriteLog([NSString stringWithFormat:
-            @"[AUDIO backgroundVC] EXCEPTION=%@", exception]);
+static NSArray *FilterRPCCModules(NSArray *original) {
+    if (![original isKindOfClass:[NSArray class]]) {
+        return original;
     }
 
-    return result;
+    NSMutableArray *filtered =
+        [NSMutableArray arrayWithCapacity:original.count];
+
+    for (id instance in original) {
+        if (IsRPCCModule(instance)) {
+            continue;
+        }
+
+        [filtered addObject:instance];
+    }
+
+    return filtered;
+}
+
+%hook CCUIModuleInstanceManager
+
+- (NSArray *)moduleInstances {
+    NSArray *original = %orig;
+    return FilterRPCCModules(original);
+}
+
+- (NSArray *)enabledModuleInstances {
+    NSArray *original = %orig;
+    return FilterRPCCModules(original);
 }
 
 %end
 
-%hook RPCCVideoSettingsModule
+%hook CCUIModuleInstance
 
-- (id)contentViewControllerForContext:(id)context {
-    id result = %orig;
-
-    @try {
-        CCWriteLog([NSString stringWithFormat:
-            @"[VIDEO contentVC] result=%p class=%@ object=%@",
-            result,
-            result ? NSStringFromClass([result class]) : @"(nil)",
-            result ?: @"(nil)"]);
-    } @catch (NSException *exception) {
-        CCWriteLog([NSString stringWithFormat:
-            @"[VIDEO contentVC] EXCEPTION=%@", exception]);
+- (CCUILayoutSize)prototypeModuleSize {
+    if (IsRPCCModule(self)) {
+        CCUILayoutSize zeroSize;
+        zeroSize.width = 0;
+        zeroSize.height = 0;
+        return zeroSize;
     }
 
-    return result;
-}
-
-- (id)backgroundViewControllerForContext:(id)context {
-    id result = %orig;
-
-    @try {
-        CCWriteLog([NSString stringWithFormat:
-            @"[VIDEO backgroundVC] result=%p class=%@ object=%@",
-            result,
-            result ? NSStringFromClass([result class]) : @"(nil)",
-            result ?: @"(nil)"]);
-    } @catch (NSException *exception) {
-        CCWriteLog([NSString stringWithFormat:
-            @"[VIDEO backgroundVC] EXCEPTION=%@", exception]);
-    }
-
-    return result;
+    return %orig;
 }
 
 %end
-
-%ctor {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [[NSFileManager defaultManager]
-            removeItemAtPath:kLogPath
-                      error:nil];
-
-        CCWriteLog(@"==============================================");
-        CCWriteLog(@"[RPCC ViewController Probe]");
-        CCWriteLog(@"Mode: ORIGINAL VALUE ONLY");
-        CCWriteLog(@"==============================================");
-    });
-}
