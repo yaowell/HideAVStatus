@@ -1,5 +1,6 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
+#import <objc/message.h>
 
 typedef struct {
     NSUInteger width;
@@ -10,7 +11,11 @@ static BOOL IsRPCCModule(id instance) {
     if (!instance) return NO;
 
     @try {
-        id module = [instance module];
+        id module = ((id (*)(id, SEL))objc_msgSend)(
+            instance,
+            sel_registerName("module")
+        );
+
         if (!module) return NO;
 
         NSString *name = NSStringFromClass([module class]);
