@@ -45,25 +45,6 @@ static void BMLog(NSString *msg)
     });
 }
 
-static NSString *BMModuleIdentifier(id obj)
-{
-    if (!obj) return @"Unknown";
-
-    @try {
-        id value = [obj valueForKey:@"moduleIdentifier"];
-        if (value) return [value description];
-    }
-    @catch (__unused NSException *e) {}
-
-    @try {
-        id value = [obj valueForKey:@"identifier"];
-        if (value) return [value description];
-    }
-    @catch (__unused NSException *e) {}
-
-    return @"Unknown";
-}
-
 static BOOL BMIsReplayKitIdentifier(NSString *identifier)
 {
     if (!identifier) return NO;
