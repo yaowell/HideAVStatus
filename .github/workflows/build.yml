@@ -1,4 +1,4 @@
-name: Build Dual Debs
+name: Build Rootless Deb
 
 on:
   push:
@@ -56,16 +56,45 @@ jobs:
             SYSROOT=$HOME/theos/sdks/iPhoneOS16.5.sdk \
             FINALPACKAGE=1
 
-      - name: Verify Rootless Package Contents
+      - name: Verify Rootless Package
         run: |
-          echo "=== PACKAGE FILES ==="
-          find packages -type f -name "*.deb" -print
+          set -e
 
-          echo "=== PACKAGE CONTENTS ==="
-          for deb in packages/*.deb; do
-            echo "----- $deb -----"
-            dpkg-deb -c "$deb"
-          done
+          DEB=$(find packages -type f -name "*.deb" | head -1)
+
+          echo "=== PACKAGE ==="
+          echo "$DEB"
+
+          echo "=== PACKAGE SIZE ==="
+          ls -lh "$DEB"
+
+          echo "=== EXTRACT PACKAGE ==="
+          rm -rf package_check
+          mkdir package_check
+          cd package_check
+
+          ar -x "../$DEB"
+
+          echo "=== PACKAGE FILES ==="
+          ls -la
+
+          echo "=== CHECK RESTORE TOOL ==="
+          if tar -tf data.tar.* | grep -q 'var/jb/usr/bin/RestoreAVControls'; then
+            echo "RestoreAVControls FOUND"
+          else
+            echo "ERROR: RestoreAVControls NOT FOUND"
+            exit 1
+          fi
+
+          echo "=== CHECK TWEAK ==="
+          if tar -tf data.tar.* | grep -q 'HideAVControls.dylib'; then
+            echo "HideAVControls.dylib FOUND"
+          else
+            echo "ERROR: HideAVControls.dylib NOT FOUND"
+            exit 1
+          fi
+
+          echo "=== PACKAGE VERIFICATION PASSED ==="
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
