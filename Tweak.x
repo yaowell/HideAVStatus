@@ -1,17 +1,27 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-static NSString *const kLogPath = @"/var/mobile/Documents/CC_RPCC_Methods.log";
+static NSString *const kLogPath =
+@"/var/mobile/Documents/CC_RPCC_Types.log";
 
 static NSArray *TargetClasses(void)
 {
     return @[
-        @"RPCCVideoSettingsModule",
-        @"RPCCAudioSettingsModule",
         @"RPCCVideoSettingsModuleBackgroundViewController",
         @"RPCCAudioSettingsModuleBackgroundViewController",
         @"RPCCVideoSettingsModuleViewController",
         @"RPCCAudioSettingsModuleViewController"
+    ];
+}
+
+static NSArray *TargetMethods(void)
+{
+    return @[
+        @"CCUIMenuModuleViewHeight",
+        @"CCUIMenuModuleViewWidth",
+        @"preferredExpandedContentHeight",
+        @"layoutVideoConferenceSubviews",
+        @"viewWillLayoutSubviews"
     ];
 }
 
@@ -22,7 +32,9 @@ static void WriteLog(NSString *text)
     NSFileManager *fm = [NSFileManager defaultManager];
 
     if (![fm fileExistsAtPath:kLogPath]) {
-        [fm createFileAtPath:kLogPath contents:nil attributes:nil];
+        [fm createFileAtPath:kLogPath
+                    contents:nil
+                  attributes:nil];
     }
 
     NSFileHandle *file =
@@ -35,14 +47,17 @@ static void WriteLog(NSString *text)
     NSString *line =
         [NSString stringWithFormat:@"%@\n", text];
 
-    [file writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+    [file writeData:
+        [line dataUsingEncoding:NSUTF8StringEncoding]];
+
     [file closeFile];
 }
 
-static void ScanMethods(void)
+static void ScanTypes(void)
 {
     WriteLog(@"==============================================");
-    WriteLog(@"[RPCC Method Runtime Scanner]");
+    WriteLog(@"[RPCC Method Type Scanner]");
+    WriteLog(@"==============================================");
 
     for (NSString *className in TargetClasses()) {
 
@@ -58,47 +73,32 @@ static void ScanMethods(void)
         WriteLog([NSString stringWithFormat:
                   @"[CLASS] %@", className]);
 
-        unsigned int count = 0;
-
-        Method *methods =
-            class_copyMethodList(cls, &count);
-
-        if (!methods) {
-            WriteLog(@"[No methods]");
-            continue;
-        }
-
-        WriteLog([NSString stringWithFormat:
-                  @"[Method Count] %u", count]);
-
-        NSMutableArray *names = [NSMutableArray array];
-
-        for (unsigned int i = 0; i < count; i++) {
-
-            Method method = methods[i];
-
-            if (!method) continue;
+        for (NSString *methodName in TargetMethods()) {
 
             SEL selector =
-                method_getName(method);
+                NSSelectorFromString(methodName);
 
-            if (!selector) continue;
+            Method method =
+                class_getInstanceMethod(cls, selector);
 
-            NSString *name =
-                NSStringFromSelector(selector);
-
-            if (name) {
-                [names addObject:name];
+            if (!method) {
+                continue;
             }
-        }
 
-        free(methods);
+            const char *types =
+                method_getTypeEncoding(method);
 
-        [names sortUsingSelector:@selector(compare:)];
+            if (!types) {
+                WriteLog([NSString stringWithFormat:
+                          @"  %@ | [NO TYPE]",
+                          methodName]);
+                continue;
+            }
 
-        for (NSString *name in names) {
             WriteLog([NSString stringWithFormat:
-                      @"  %@", name]);
+                      @"  %@ | types=%s",
+                      methodName,
+                      types]);
         }
     }
 
@@ -127,7 +127,8 @@ static void StartScanner(void)
 
     dispatch_source_set_timer(
         timer,
-        dispatch_time(DISPATCH_TIME_NOW, 1 * NSEC_PER_SEC),
+        dispatch_time(DISPATCH_TIME_NOW,
+                      1 * NSEC_PER_SEC),
         1 * NSEC_PER_SEC,
         100 * NSEC_PER_MSEC);
 
@@ -146,9 +147,7 @@ static void StartScanner(void)
         }
 
         if (found || count >= 60) {
-
-            ScanMethods();
-
+            ScanTypes();
             dispatch_source_cancel(timer);
         }
     });
@@ -163,7 +162,8 @@ static void StartScanner(void)
         NSString *bundleID =
             [[NSBundle mainBundle] bundleIdentifier];
 
-        if (![bundleID isEqualToString:@"com.apple.springboard"]) {
+        if (![bundleID isEqualToString:
+              @"com.apple.springboard"]) {
             return;
         }
 
