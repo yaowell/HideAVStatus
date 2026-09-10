@@ -1,95 +1,317 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
+#import <objc/runtime.h>
 
-static NSString * const kManagedDir =
-    @"/var/Managed Preferences/mobile";
+static NSString *const kLogFilePath = @"/var/mobile/Documents/CC_Probe.log";
 
-static NSString * const kAudioModule =
-    @"/var/Managed Preferences/mobile/com.apple.replaykit.AudioConferenceControlCenterModule.plist";
+static NSMutableSet *gRecordedEntries = nil;
+static dispatch_queue_t gLogQueue = nil;
 
-static NSString * const kVideoModule =
-    @"/var/Managed Preferences/mobile/com.apple.replaykit.VideoConferenceControlCenterModule.plist";
-
-
-static void BMHideModule(NSString *path)
+static void BMLog(NSString *message)
 {
-    NSFileManager *fm = [NSFileManager defaultManager];
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        gRecordedEntries = [NSMutableSet set];
+        gLogQueue = dispatch_queue_create("com.yaowell.hideavcontrols.probe", DISPATCH_QUEUE_SERIAL);
 
-    NSError *error = nil;
+        [[NSFileManager defaultManager] removeItemAtPath:kLogFilePath error:nil];
+    });
 
-    // 确保 Managed Preferences/mobile 目录存在
-    BOOL isDir = NO;
-
-    if (![fm fileExistsAtPath:kManagedDir isDirectory:&isDir]) {
-
-        BOOL created =
-            [fm createDirectoryAtPath:kManagedDir
-          withIntermediateDirectories:YES
-                           attributes:@{
-                               NSFilePosixPermissions : @0755
-                           }
-                                error:&error];
-
-        if (!created) {
-            NSLog(@"[HideReplayKitCC] create directory failed: %@",
-                  error);
-
-            return;
-        }
-    }
-
-    // 读取原有 plist
-    NSMutableDictionary *plist =
-        [NSMutableDictionary dictionaryWithContentsOfFile:path];
-
-    if (plist == nil) {
-        plist = [NSMutableDictionary dictionary];
-    }
-
-    // Cowabunga Lite 的 Hide 模式
-    plist[@"SBIconVisibility"] = @NO;
-
-    // 写入 plist
-    BOOL success =
-        [plist writeToFile:path atomically:YES];
-
-    if (!success) {
-        NSLog(@"[HideReplayKitCC] WRITE FAILED: %@",
-              path);
-
+    if (!message) {
         return;
     }
 
-    // 确保系统进程可读
-    [fm setAttributes:@{
-        NSFilePosixPermissions : @0644
-    }
-       ofItemAtPath:path
-             error:nil];
+    dispatch_async(gLogQueue, ^{
+        if ([gRecordedEntries containsObject:message]) {
+            return;
+        }
 
-    NSLog(@"[HideReplayKitCC] HIDDEN: %@",
-          path);
+        [gRecordedEntries addObject:message];
+
+        NSFileManager *fm = [NSFileManager defaultManager];
+
+        if (![fm fileExistsAtPath:kLogFilePath]) {
+            [fm createFileAtPath:kLogFilePath contents:nil attributes:nil];
+        }
+
+        NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:kLogFilePath];
+
+        if (!handle) {
+            return;
+        }
+
+        [handle seekToEndOfFile];
+
+        NSString *line = [NSString stringWithFormat:@"%@\n", message];
+
+        [handle writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+
+        [handle closeFile];
+    });
 }
 
-
-static void BMApply(void)
+static NSString *BMModuleIdentifier(id instance)
 {
-    BMHideModule(kAudioModule);
-    BMHideModule(kVideoModule);
+    if (!instance) {
+        return @"<nil>";
+    }
+
+    NSString *identifier = nil;
+
+    @try {
+        if ([instance respondsToSelector:@selector(moduleIdentifier)]) {
+            identifier = [instance performSelector:@selector(moduleIdentifier)];
+        }
+    }
+    @catch (NSException *exception) {
+        identifier = nil;
+    }
+
+    if (!identifier) {
+        @try {
+            identifier = [instance valueForKey:@"moduleIdentifier"];
+        }
+        @catch (NSException *exception) {
+            identifier = nil;
+        }
+    }
+
+    if (!identifier) {
+        @try {
+            identifier = [instance valueForKey:@"identifier"];
+        }
+        @catch (NSException *exception) {
+            identifier = nil;
+        }
+    }
+
+    return identifier ?: @"<Unknown>";
 }
 
+static BOOL BMClassNameMatches(NSString *className)
+{
+    if (!className) {
+        return NO;
+    }
+
+    if ([className hasPrefix:@"CCUI"]) {
+        return YES;
+    }
+
+    NSArray *keywords = @[
+        @"Module",
+        @"Layout",
+        @"Grid",
+        @"Collection",
+        @"Content"
+    ];
+
+    for (NSString *keyword in keywords) {
+        if ([className containsString:keyword] &&
+            [className containsString:@"CC"]) {
+            return YES;
+        }
+    }
+
+    return NO;
+}
+
+static BOOL BMSelectorMatches(NSString *selectorName)
+{
+    if (!selectorName) {
+        return NO;
+    }
+
+    NSString *lower = selectorName.lowercaseString;
+
+    NSArray *keywords = @[
+        @"layout",
+        @"layoutsubviews",
+        @"size",
+        @"frame",
+        @"height",
+        @"width",
+        @"content",
+        @"module",
+        @"margin",
+        @"padding",
+        @"inset"
+    ];
+
+    for (NSString *keyword in keywords) {
+        if ([lower containsString:keyword]) {
+            return YES;
+        }
+    }
+
+    return NO;
+}
+
+static void BMScanRuntime(void)
+{
+    BMLog(@"");
+    BMLog(@"==================================================");
+    BMLog(@"[Runtime Scan] START");
+    BMLog(@"==================================================");
+
+    int classCount = objc_getClassList(NULL, 0);
+
+    if (classCount <= 0) {
+        BMLog(@"[Runtime Scan] objc_getClassList returned 0");
+        return;
+    }
+
+    Class *classes = malloc(sizeof(Class) * classCount);
+
+    if (!classes) {
+        BMLog(@"[Runtime Scan] malloc failed");
+        return;
+    }
+
+    classCount = objc_getClassList(classes, classCount);
+
+    BMLog([NSString stringWithFormat:
+           @"[Runtime Scan] Loaded classes: %d",
+           classCount]);
+
+    int matchedClassCount = 0;
+
+    for (int i = 0; i < classCount; i++) {
+
+        Class cls = classes[i];
+
+        if (!cls) {
+            continue;
+        }
+
+        NSString *className = NSStringFromClass(cls);
+
+        if (!BMClassNameMatches(className)) {
+            continue;
+        }
+
+        unsigned int methodCount = 0;
+
+        Method *methods = class_copyMethodList(cls, &methodCount);
+
+        if (!methods) {
+            continue;
+        }
+
+        NSMutableArray *matchedSelectors = [NSMutableArray array];
+
+        for (unsigned int j = 0; j < methodCount; j++) {
+
+            SEL selector = method_getName(methods[j]);
+
+            if (!selector) {
+                continue;
+            }
+
+            NSString *selectorName = NSStringFromSelector(selector);
+
+            if (BMSelectorMatches(selectorName)) {
+
+                if (![matchedSelectors containsObject:selectorName]) {
+                    [matchedSelectors addObject:selectorName];
+                }
+            }
+        }
+
+        free(methods);
+
+        if (matchedSelectors.count == 0) {
+            continue;
+        }
+
+        matchedClassCount++;
+
+        [matchedSelectors sortUsingSelector:@selector(compare:)];
+
+        NSString *line =
+        [NSString stringWithFormat:
+         @"[Class] %@ | Methods: %@",
+         className,
+         [matchedSelectors componentsJoinedByString:@", "]];
+
+        BMLog(line);
+    }
+
+    free(classes);
+
+    BMLog([NSString stringWithFormat:
+           @"[Runtime Scan] Matched classes: %d",
+           matchedClassCount]);
+
+    BMLog(@"==================================================");
+    BMLog(@"[Runtime Scan] END");
+    BMLog(@"==================================================");
+}
+
+%hook CCUIModuleInstanceManager
+
+- (NSArray *)enabledModuleInstances
+{
+    NSArray *instances = %orig;
+
+    static dispatch_once_t probeOnce;
+
+    dispatch_once(&probeOnce, ^{
+
+        BMLog(@"");
+        BMLog(@"##################################################");
+        BMLog(@"[Probe] CCUIModuleInstanceManager detected");
+        BMLog(@"[Probe] enabledModuleInstances called");
+        BMLog(@"##################################################");
+
+        BMLog([NSString stringWithFormat:
+               @"[Probe] Instance count: %lu",
+               (unsigned long)instances.count]);
+
+        NSUInteger index = 0;
+
+        for (id instance in instances) {
+
+            NSString *className =
+            NSStringFromClass([instance class]);
+
+            NSString *identifier =
+            BMModuleIdentifier(instance);
+
+            BMLog([NSString stringWithFormat:
+                   @"[Module %lu] Class=%@ | Identifier=%@",
+                   (unsigned long)index,
+                   className,
+                   identifier]);
+
+            index++;
+        }
+
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            BMScanRuntime();
+        });
+    });
+
+    return instances;
+}
+
+%end
 
 %ctor
 {
     @autoreleasepool {
 
         NSString *bundleID =
-            [[NSBundle mainBundle] bundleIdentifier];
+        [[NSBundle mainBundle] bundleIdentifier];
 
         if (![bundleID isEqualToString:@"com.apple.springboard"]) {
             return;
         }
 
-        BMApply();
+        BMLog(@"");
+        BMLog(@"==============================================");
+        BMLog(@"[Probe] HideAVControls Runtime Probe Loaded");
+        BMLog(@"[Probe] SpringBoard detected");
+        BMLog(@"==============================================");
     }
 }
