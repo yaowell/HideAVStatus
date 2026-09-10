@@ -1,43 +1,38 @@
 #import <Foundation/Foundation.h>
 #import <CoreFoundation/CoreFoundation.h>
 
-static CFStringRef const kAudioAppID =
-    CFSTR("com.apple.replaykit.AudioConferenceControlCenterModule");
-
-static CFStringRef const kVideoAppID =
-    CFSTR("com.apple.replaykit.VideoConferenceControlCenterModule");
-
-static CFStringRef const kVisibilityKey =
-    CFSTR("SBIconVisibility");
-
-static void RestoreDefault(CFStringRef appID)
+static void BMRestoreDefault(NSString *domain)
 {
-    // 删除 SBIconVisibility
-    // 不写 true，也不写 false
-    // 删除后恢复 Control Center 的 Default / 动态状态
+    CFStringRef appID = (__bridge CFStringRef)domain;
+
     CFPreferencesSetValue(
-        kVisibilityKey,
+        CFSTR("SBIconVisibility"),
         NULL,
         appID,
         kCFPreferencesCurrentUser,
         kCFPreferencesAnyHost
     );
 
-    // 立即同步到 CFPreferences
     CFPreferencesSynchronize(
         appID,
         kCFPreferencesCurrentUser,
         kCFPreferencesAnyHost
     );
 
-    NSLog(@"[HideReplayKitCC] DEFAULT RESTORED: %@", appID);
+    NSLog(@"[HideAVControls] Restored default: %@", domain);
 }
 
 int main(int argc, char *argv[])
 {
     @autoreleasepool {
-        RestoreDefault(kAudioAppID);
-        RestoreDefault(kVideoAppID);
+
+        BMRestoreDefault(
+            @"com.apple.replaykit.AudioConferenceControlCenterModule"
+        );
+
+        BMRestoreDefault(
+            @"com.apple.replaykit.VideoConferenceControlCenterModule"
+        );
     }
 
     return 0;
