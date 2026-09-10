@@ -10,38 +10,12 @@ static void CCWriteLog(NSString *text) {
     if (!old) old = @"";
 
     NSString *line = [NSString stringWithFormat:@"%@\n", text];
-    [old stringByAppendingString:line];
 
     [[old stringByAppendingString:line]
         writeToFile:kLogPath
         atomically:YES
         encoding:NSUTF8StringEncoding
         error:nil];
-}
-
-static BOOL CCIsInterestingInstance(id instance) {
-    static NSMutableSet *knownObjects;
-    static dispatch_once_t onceToken;
-
-    dispatch_once(&onceToken, ^{
-        knownObjects = [NSMutableSet set];
-    });
-
-    NSString *key = [NSString stringWithFormat:@"%p", instance];
-
-    @synchronized (knownObjects) {
-        if ([knownObjects containsObject:key]) {
-            return NO;
-        }
-
-        [knownObjects addObject:key];
-
-        if (knownObjects.count > 200) {
-            [knownObjects removeAllObjects];
-        }
-    }
-
-    return YES;
 }
 
 %hook CCUIModuleInstance
