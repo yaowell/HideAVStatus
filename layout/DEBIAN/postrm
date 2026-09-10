@@ -3,7 +3,7 @@
 TOOL="/var/jb/usr/bin/RestoreAVControls"
 
 if [ -x "$TOOL" ]; then
-    su mobile -c "$TOOL" 2>/dev/null || true
+    "$TOOL"
 fi
 
 killall -9 cfprefsd 2>/dev/null || true
