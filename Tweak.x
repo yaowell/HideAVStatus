@@ -22,8 +22,7 @@ static void ScanClass(Class cls) {
     if (!cls) return;
 
     CCWriteLog(@"----------------------------------------------");
-    CCWriteLog([NSString stringWithFormat:
-        @"CLASS: %@", NSStringFromClass(cls)]);
+    CCWriteLog([NSString stringWithFormat:@"CLASS: %@", NSStringFromClass(cls)]);
     CCWriteLog(@"----------------------------------------------");
 
     unsigned int count = 0;
@@ -45,6 +44,53 @@ static void ScanClass(Class cls) {
         @"[Finished] methods=%u", count]);
 }
 
+%hook CCUIModuleInstance
+
+- (id)module {
+    id result = %orig;
+
+    @try {
+        Class cls = result ? [result class] : Nil;
+
+        if (cls) {
+            NSString *name = NSStringFromClass(cls);
+
+            if ([name isEqualToString:@"RPCCAudioSettingsModule"] ||
+                [name isEqualToString:@"RPCCVideoSettingsModule"]) {
+
+                static NSMutableSet *scannedClasses;
+                static dispatch_once_t onceToken;
+
+                dispatch_once(&onceToken, ^{
+                    scannedClasses = [NSMutableSet set];
+                });
+
+                @synchronized (scannedClasses) {
+                    if (![scannedClasses containsObject:name]) {
+                        [scannedClasses addObject:name];
+
+                        CCWriteLog(@"==============================================");
+                        CCWriteLog([NSString stringWithFormat:
+                            @"[DYNAMIC CLASS FOUND] %@", name]);
+
+                        ScanClass(cls);
+
+                        CCWriteLog(@"==============================================");
+                    }
+                }
+            }
+        }
+
+    } @catch (NSException *exception) {
+        CCWriteLog([NSString stringWithFormat:
+            @"[EXCEPTION] %@", exception]);
+    }
+
+    return result;
+}
+
+%end
+
 %ctor {
     dispatch_async(dispatch_get_main_queue(), ^{
         [[NSFileManager defaultManager]
@@ -52,14 +98,8 @@ static void ScanClass(Class cls) {
                       error:nil];
 
         CCWriteLog(@"==============================================");
-        CCWriteLog(@"[RPCC Module Method Scanner]");
-        CCWriteLog(@"==============================================");
-
-        ScanClass(NSClassFromString(@"RPCCAudioSettingsModule"));
-        ScanClass(NSClassFromString(@"RPCCVideoSettingsModule"));
-
-        CCWriteLog(@"==============================================");
-        CCWriteLog(@"[Finished]");
+        CCWriteLog(@"[RPCC Dynamic Module Method Scanner]");
+        CCWriteLog(@"Waiting for RPCCAudio/RPCCVideo...");
         CCWriteLog(@"==============================================");
     });
 }
