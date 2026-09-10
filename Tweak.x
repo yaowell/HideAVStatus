@@ -10,6 +10,7 @@ static dispatch_queue_t gLogQueue = nil;
 static void BMLog(NSString *message)
 {
     static dispatch_once_t onceToken;
+
     dispatch_once(&onceToken, ^{
         gRecordedEntries = [NSMutableSet set];
         gLogQueue = dispatch_queue_create("com.yaowell.hideavcontrols.probe", DISPATCH_QUEUE_SERIAL);
@@ -34,7 +35,8 @@ static void BMLog(NSString *message)
             [fm createFileAtPath:kLogFilePath contents:nil attributes:nil];
         }
 
-        NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:kLogFilePath];
+        NSFileHandle *handle =
+            [NSFileHandle fileHandleForWritingAtPath:kLogFilePath];
 
         if (!handle) {
             return;
@@ -42,9 +44,11 @@ static void BMLog(NSString *message)
 
         [handle seekToEndOfFile];
 
-        NSString *line = [NSString stringWithFormat:@"%@\n", message];
+        NSString *line =
+            [NSString stringWithFormat:@"%@\n", message];
 
-        [handle writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+        [handle writeData:
+            [line dataUsingEncoding:NSUTF8StringEncoding]];
 
         [handle closeFile];
     });
@@ -122,7 +126,8 @@ static BOOL BMSelectorMatches(NSString *selectorName)
         return NO;
     }
 
-    NSString *lower = selectorName.lowercaseString;
+    NSString *lower =
+        selectorName.lowercaseString;
 
     NSArray *keywords = @[
         @"layout",
@@ -154,21 +159,24 @@ static void BMScanRuntime(void)
     BMLog(@"[Runtime Scan] START");
     BMLog(@"==================================================");
 
-    int classCount = objc_getClassList(NULL, 0);
+    int classCount =
+        objc_getClassList(NULL, 0);
 
     if (classCount <= 0) {
         BMLog(@"[Runtime Scan] objc_getClassList returned 0");
         return;
     }
 
-    Class *classes = malloc(sizeof(Class) * classCount);
+    Class *classes =
+        (Class *)malloc(sizeof(Class) * classCount);
 
     if (!classes) {
         BMLog(@"[Runtime Scan] malloc failed");
         return;
     }
 
-    classCount = objc_getClassList(classes, classCount);
+    classCount =
+        objc_getClassList(classes, classCount);
 
     BMLog([NSString stringWithFormat:
            @"[Runtime Scan] Loaded classes: %d",
@@ -184,7 +192,8 @@ static void BMScanRuntime(void)
             continue;
         }
 
-        NSString *className = NSStringFromClass(cls);
+        NSString *className =
+            NSStringFromClass(cls);
 
         if (!BMClassNameMatches(className)) {
             continue;
@@ -192,28 +201,37 @@ static void BMScanRuntime(void)
 
         unsigned int methodCount = 0;
 
-        Method *methods = class_copyMethodList(cls, &methodCount);
+        Method *methods =
+            class_copyMethodList(cls, &methodCount);
 
         if (!methods) {
             continue;
         }
 
-        NSMutableArray *matchedSelectors = [NSMutableArray array];
+        NSMutableArray *matchedSelectors =
+            [NSMutableArray array];
 
-        for (unsigned int j = 0; j < methodCount; j++) {
+        for (unsigned int j = 0;
+             j < methodCount;
+             j++) {
 
-            SEL selector = method_getName(methods[j]);
+            SEL selector =
+                method_getName(methods[j]);
 
             if (!selector) {
                 continue;
             }
 
-            NSString *selectorName = NSStringFromSelector(selector);
+            NSString *selectorName =
+                NSStringFromSelector(selector);
 
             if (BMSelectorMatches(selectorName)) {
 
-                if (![matchedSelectors containsObject:selectorName]) {
-                    [matchedSelectors addObject:selectorName];
+                if (![matchedSelectors
+                      containsObject:selectorName]) {
+
+                    [matchedSelectors
+                        addObject:selectorName];
                 }
             }
         }
@@ -226,13 +244,15 @@ static void BMScanRuntime(void)
 
         matchedClassCount++;
 
-        [matchedSelectors sortUsingSelector:@selector(compare:)];
+        [matchedSelectors
+            sortUsingSelector:@selector(compare:)];
 
         NSString *line =
-        [NSString stringWithFormat:
-         @"[Class] %@ | Methods: %@",
-         className,
-         [matchedSelectors componentsJoinedByString:@", "]];
+            [NSString stringWithFormat:
+             @"[Class] %@ | Methods: %@",
+             className,
+             [matchedSelectors
+                 componentsJoinedByString:@", "]];
 
         BMLog(line);
     }
@@ -270,48 +290,4 @@ static void BMScanRuntime(void)
 
         NSUInteger index = 0;
 
-        for (id instance in instances) {
-
-            NSString *className =
-            NSStringFromClass([instance class]);
-
-            NSString *identifier =
-            BMModuleIdentifier(instance);
-
-            BMLog([NSString stringWithFormat:
-                   @"[Module %lu] Class=%@ | Identifier=%@",
-                   (unsigned long)index,
-                   className,
-                   identifier]);
-
-            index++;
-        }
-
-        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-            BMScanRuntime();
-        });
-    });
-
-    return instances;
-}
-
-%end
-
-%ctor
-{
-    @autoreleasepool {
-
-        NSString *bundleID =
-        [[NSBundle mainBundle] bundleIdentifier];
-
-        if (![bundleID isEqualToString:@"com.apple.springboard"]) {
-            return;
-        }
-
-        BMLog(@"");
-        BMLog(@"==============================================");
-        BMLog(@"[Probe] HideAVControls Runtime Probe Loaded");
-        BMLog(@"[Probe] SpringBoard detected");
-        BMLog(@"==============================================");
-    }
-}
+       ​⬤
