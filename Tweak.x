@@ -9,12 +9,10 @@ static NSString * const kAudioModule =
 static NSString * const kVideoModule =
     @"/var/Managed Preferences/mobile/com.apple.replaykit.VideoConferenceControlCenterModule.plist";
 
-
 static void BMHideModule(NSString *path)
 {
     NSFileManager *fm = [NSFileManager defaultManager];
 
-    // 读取已有 plist
     NSMutableDictionary *plist =
         [NSMutableDictionary dictionaryWithContentsOfFile:path];
 
@@ -22,7 +20,6 @@ static void BMHideModule(NSString *path)
         plist = [NSMutableDictionary dictionary];
     }
 
-    // 已经是隐藏状态，就不再重复写入
     id visibility = plist[@"SBIconVisibility"];
 
     BOOL alreadyHidden =
@@ -37,16 +34,13 @@ static void BMHideModule(NSString *path)
             [plist writeToFile:path atomically:YES];
 
         if (!success) {
-            NSLog(@"[HideReplayKitCC] WRITE FAILED: %@",
-                  path);
+            NSLog(@"[HideReplayKitCC] WRITE FAILED: %@", path);
             return;
         }
 
-        NSLog(@"[HideReplayKitCC] HIDDEN: %@",
-              path);
+        NSLog(@"[HideReplayKitCC] HIDDEN: %@", path);
     }
 
-    // 只有权限不是 0644 时才修改
     NSDictionary *attributes =
         [fm attributesOfItemAtPath:path error:nil];
 
@@ -64,12 +58,10 @@ static void BMHideModule(NSString *path)
     }
 }
 
-
 static void BMApply(void)
 {
     NSFileManager *fm = [NSFileManager defaultManager];
 
-    // 确保目录存在
     BOOL isDir = NO;
 
     if (![fm fileExistsAtPath:kManagedDir
@@ -86,8 +78,7 @@ static void BMApply(void)
                                 error:&error];
 
         if (!created) {
-            NSLog(@"[HideReplayKitCC] CREATE DIR FAILED: %@",
-                  error);
+            NSLog(@"[HideReplayKitCC] CREATE DIR FAILED: %@", error);
             return;
         }
     }
@@ -95,7 +86,6 @@ static void BMApply(void)
     BMHideModule(kAudioModule);
     BMHideModule(kVideoModule);
 }
-
 
 %ctor
 {
