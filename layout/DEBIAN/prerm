@@ -1,3 +1,11 @@
 #!/bin/sh
 
+TOOL="/var/jb/usr/bin/RestoreAVControls"
+
+if [ -x "$TOOL" ]; then
+    "$TOOL"
+fi
+
+killall -9 cfprefsd 2>/dev/null || true
+
 exit 0
