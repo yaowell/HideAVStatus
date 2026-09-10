@@ -1,32 +1,76 @@
 #import <UIKit/UIKit.h>
 
 static void CCWriteLog(NSString *text) {
-    NSString *path = @"/var/mobile/Documents/CC_RPCC_AudioHeight.log";
+    NSString *path = @"/var/mobile/Documents/CC_ModuleInstances.log";
     NSString *old = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
     if (!old) old = @"";
     NSString *line = [NSString stringWithFormat:@"%@\n", text];
-    [old stringByAppendingString:line];
-    [[old stringByAppendingString:line] writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    NSString *out = [old stringByAppendingString:line];
+    [out writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
 
-%hook RPCCAudioSettingsModuleViewController
+static NSString *CCIdentifier(id instance) {
+    NSString *identifier = nil;
 
-- (double)preferredExpandedContentHeight {
-    double height = %orig;
+    @try {
+        identifier = [instance valueForKey:@"moduleIdentifier"];
 
+        if (!identifier)
+            identifier = [instance valueForKey:@"identifier"];
+
+        if (!identifier)
+            identifier = [[instance valueForKey:@"moduleRepresentation"] valueForKey:@"identifier"];
+    }
+    @catch (NSException *exception) {
+    }
+
+    return identifier ?: @"(unknown)";
+}
+
+static void CCLogInstances(NSString *method, NSArray *instances) {
     CCWriteLog([NSString stringWithFormat:
-        @"[preferredExpandedContentHeight] original=%.2f",
-        height]);
+        @"[%@] count=%lu",
+        method,
+        (unsigned long)instances.count]);
 
-    return height;
+    NSUInteger index = 0;
+
+    for (id instance in instances) {
+        NSString *identifier = CCIdentifier(instance);
+
+        CCWriteLog([NSString stringWithFormat:
+            @"  [%lu] %@",
+            (unsigned long)index,
+            identifier]);
+
+        index++;
+    }
+}
+
+%hook CCUIModuleInstanceManager
+
+- (NSArray *)moduleInstances {
+    NSArray *result = %orig;
+
+    CCLogInstances(@"moduleInstances", result);
+
+    return result;
+}
+
+- (NSArray *)enabledModuleInstances {
+    NSArray *result = %orig;
+
+    CCLogInstances(@"enabledModuleInstances", result);
+
+    return result;
 }
 
 %end
 
 %ctor {
     CCWriteLog(@"==============================================");
-    CCWriteLog(@"[RPCC Audio Height Probe]");
-    CCWriteLog(@"Hook: preferredExpandedContentHeight");
+    CCWriteLog(@"[CC Module Instance Probe]");
+    CCWriteLog(@"Hook: CCUIModuleInstanceManager");
     CCWriteLog(@"Mode: Original value only");
     CCWriteLog(@"==============================================");
 }
