@@ -35,8 +35,7 @@ static void BMLog(NSString *message)
             [fm createFileAtPath:kLogFilePath contents:nil attributes:nil];
         }
 
-        NSFileHandle *handle =
-            [NSFileHandle fileHandleForWritingAtPath:kLogFilePath];
+        NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:kLogFilePath];
 
         if (!handle) {
             return;
@@ -44,11 +43,9 @@ static void BMLog(NSString *message)
 
         [handle seekToEndOfFile];
 
-        NSString *line =
-            [NSString stringWithFormat:@"%@\n", message];
+        NSString *line = [NSString stringWithFormat:@"%@\n", message];
 
-        [handle writeData:
-            [line dataUsingEncoding:NSUTF8StringEncoding]];
+        [handle writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
 
         [handle closeFile];
     });
@@ -126,8 +123,7 @@ static BOOL BMSelectorMatches(NSString *selectorName)
         return NO;
     }
 
-    NSString *lower =
-        selectorName.lowercaseString;
+    NSString *lower = selectorName.lowercaseString;
 
     NSArray *keywords = @[
         @"layout",
@@ -159,8 +155,7 @@ static void BMScanRuntime(void)
     BMLog(@"[Runtime Scan] START");
     BMLog(@"==================================================");
 
-    int classCount =
-        objc_getClassList(NULL, 0);
+    int classCount = objc_getClassList(NULL, 0);
 
     if (classCount <= 0) {
         BMLog(@"[Runtime Scan] objc_getClassList returned 0");
@@ -290,4 +285,55 @@ static void BMScanRuntime(void)
 
         NSUInteger index = 0;
 
-       ​⬤
+        for (id instance in instances) {
+
+            NSString *className =
+                NSStringFromClass([instance class]);
+
+            NSString *identifier =
+                BMModuleIdentifier(instance);
+
+            BMLog([NSString stringWithFormat:
+                   @"[Module %lu] Class=%@ | Identifier=%@",
+                   (unsigned long)index,
+                   className,
+                   identifier]);
+
+            index++;
+        }
+
+        dispatch_async(
+            dispatch_get_global_queue(
+                QOS_CLASS_UTILITY,
+                0
+            ),
+            ^{
+                BMScanRuntime();
+            }
+        );
+    });
+
+    return instances;
+}
+
+%end
+
+%ctor
+{
+    @autoreleasepool {
+
+        NSString *bundleID =
+            [[NSBundle mainBundle] bundleIdentifier];
+
+        if (![bundleID isEqualToString:
+              @"com.apple.springboard"]) {
+            return;
+        }
+
+        BMLog(@"");
+        BMLog(@"==============================================");
+        BMLog(@"[Probe] HideAVControls Runtime Probe Loaded");
+        BMLog(@"[Probe] SpringBoard detected");
+        BMLog(@"==============================================");
+    }
+}
