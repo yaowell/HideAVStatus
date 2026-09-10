@@ -45,12 +45,6 @@ static void BMLog(NSString *msg)
     });
 }
 
-static NSString *BMClassName(id obj)
-{
-    if (!obj) return @"nil";
-    return NSStringFromClass([obj class]) ?: @"Unknown";
-}
-
 static NSString *BMModuleIdentifier(id obj)
 {
     if (!obj) return @"Unknown";
@@ -84,7 +78,6 @@ static BOOL BMIsReplayKitIdentifier(NSString *identifier)
 @class CCUIModuleInstanceManager;
 @class CCUIControlCenterPositionProvider;
 @class CCUIModularControlCenterOverlayViewController;
-@class CCUIContentModuleContainerViewController;
 @class CCUIModuleCollectionViewController;
 
 %hook CCUIModuleCollectionViewController
@@ -174,7 +167,6 @@ static BOOL BMIsReplayKitIdentifier(NSString *identifier)
     BMLog([NSString stringWithFormat:
            @"[MODULE LAYOUT SIZE] CCUIModularControlCenterOverlayViewController | orientation=%lld | size=(%.2f, %.2f)",
            orientation,
-           (long long)orientation,
            (double)result.width,
            (double)result.height]);
 
@@ -201,7 +193,6 @@ static BOOL BMIsReplayKitIdentifier(NSString *identifier)
     BMLog([NSString stringWithFormat:
            @"[INSTANCE MANAGER SIZE] orientation=%lld | size=(%.2f, %.2f)",
            orientation,
-           (long long)orientation,
            (double)result.width,
            (double)result.height]);
 
@@ -213,45 +204,6 @@ static BOOL BMIsReplayKitIdentifier(NSString *identifier)
     BMLog(@"[REQUEST SIZE UPDATE] CCUIModuleInstanceManager");
 
     %orig(context);
-}
-
-%end
-
-%hook CCUIContentModuleContainerViewController
-
-- (void)viewWillLayoutSubviews
-{
-    id module = nil;
-    NSString *identifier = @"Unknown";
-
-    @try {
-        module = [self valueForKey:@"contentModule"];
-        identifier = BMModuleIdentifier(module);
-    }
-    @catch (__unused NSException *e) {}
-
-    if (BMIsReplayKitIdentifier(identifier)) {
-
-        UIView *containerView = nil;
-
-        @try {
-            containerView = [self valueForKey:@"view"];
-        }
-        @catch (__unused NSException *e) {}
-
-        CGRect frame = containerView ? containerView.frame : CGRectZero;
-
-        BMLog([NSString stringWithFormat:
-               @"[CONTAINER LAYOUT] %@ | module=%@ | frame=(%.2f, %.2f, %.2f, %.2f)",
-               identifier,
-               BMClassName(module),
-               (double)frame.origin.x,
-               (double)frame.origin.y,
-               (double)frame.size.width,
-               (double)frame.size.height]);
-    }
-
-    %orig;
 }
 
 %end
