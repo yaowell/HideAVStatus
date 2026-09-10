@@ -70,6 +70,23 @@ static NSString *BMModuleIdentifier(id obj)
     return @"Unknown";
 }
 
+static BOOL BMIsReplayKitIdentifier(NSString *identifier)
+{
+    if (!identifier) return NO;
+
+    return
+        [identifier containsString:@"RPCCAudio"] ||
+        [identifier containsString:@"RPCCVideo"] ||
+        [identifier containsString:@"AudioConference"] ||
+        [identifier containsString:@"VideoConference"];
+}
+
+@class CCUIModuleInstanceManager;
+@class CCUIControlCenterPositionProvider;
+@class CCUIModularControlCenterOverlayViewController;
+@class CCUIContentModuleContainerViewController;
+@class CCUIModuleCollectionViewController;
+
 %hook CCUIModuleCollectionViewController
 
 - (CGSize)layoutSizeForModuleIdentifier:(NSString *)identifier
@@ -78,18 +95,14 @@ static NSString *BMModuleIdentifier(id obj)
     CGSize result =
         %orig(identifier, orientation);
 
-    if (identifier &&
-        ([identifier containsString:@"RPCCAudio"] ||
-         [identifier containsString:@"RPCCVideo"] ||
-         [identifier containsString:@"AudioConference"] ||
-         [identifier containsString:@"VideoConference"])) {
+    if (BMIsReplayKitIdentifier(identifier)) {
 
         BMLog([NSString stringWithFormat:
                @"[SIZE] CCUIModuleCollectionViewController | %@ | orientation=%lld | size=(%.2f, %.2f)",
                identifier,
                orientation,
-               result.width,
-               result.height]);
+               (double)result.width,
+               (double)result.height]);
     }
 
     return result;
@@ -111,19 +124,15 @@ static NSString *BMModuleIdentifier(id obj)
     CGRect result =
         %orig(identifier);
 
-    if (identifier &&
-        ([identifier containsString:@"RPCCAudio"] ||
-         [identifier containsString:@"RPCCVideo"] ||
-         [identifier containsString:@"AudioConference"] ||
-         [identifier containsString:@"VideoConference"])) {
+    if (BMIsReplayKitIdentifier(identifier)) {
 
         BMLog([NSString stringWithFormat:
                @"[RECT] CCUIControlCenterPositionProvider | %@ | rect=(%.2f, %.2f, %.2f, %.2f)",
                identifier,
-               result.origin.x,
-               result.origin.y,
-               result.size.width,
-               result.size.height]);
+               (double)result.origin.x,
+               (double)result.origin.y,
+               (double)result.size.width,
+               (double)result.size.height]);
     }
 
     return result;
@@ -135,8 +144,8 @@ static NSString *BMModuleIdentifier(id obj)
 
     BMLog([NSString stringWithFormat:
            @"[TOTAL SIZE] CCUIControlCenterPositionProvider | size=(%.2f, %.2f)",
-           result.width,
-           result.height]);
+           (double)result.width,
+           (double)result.height]);
 
     return result;
 }
@@ -165,8 +174,9 @@ static NSString *BMModuleIdentifier(id obj)
     BMLog([NSString stringWithFormat:
            @"[MODULE LAYOUT SIZE] CCUIModularControlCenterOverlayViewController | orientation=%lld | size=(%.2f, %.2f)",
            orientation,
-           result.width,
-           result.height]);
+           (long long)orientation,
+           (double)result.width,
+           (double)result.height]);
 
     return result;
 }
@@ -191,8 +201,9 @@ static NSString *BMModuleIdentifier(id obj)
     BMLog([NSString stringWithFormat:
            @"[INSTANCE MANAGER SIZE] orientation=%lld | size=(%.2f, %.2f)",
            orientation,
-           result.width,
-           result.height]);
+           (long long)orientation,
+           (double)result.width,
+           (double)result.height]);
 
     return result;
 }
@@ -219,19 +230,25 @@ static NSString *BMModuleIdentifier(id obj)
     }
     @catch (__unused NSException *e) {}
 
-    if ([identifier containsString:@"RPCCAudio"] ||
-        [identifier containsString:@"RPCCVideo"] ||
-        [identifier containsString:@"AudioConference"] ||
-        [identifier containsString:@"VideoConference"]) {
+    if (BMIsReplayKitIdentifier(identifier)) {
+
+        UIView *containerView = nil;
+
+        @try {
+            containerView = [self valueForKey:@"view"];
+        }
+        @catch (__unused NSException *e) {}
+
+        CGRect frame = containerView ? containerView.frame : CGRectZero;
 
         BMLog([NSString stringWithFormat:
                @"[CONTAINER LAYOUT] %@ | module=%@ | frame=(%.2f, %.2f, %.2f, %.2f)",
                identifier,
                BMClassName(module),
-               self.view.frame.origin.x,
-               self.view.frame.origin.y,
-               self.view.frame.size.width,
-               self.view.frame.size.height]);
+               (double)frame.origin.x,
+               (double)frame.origin.y,
+               (double)frame.size.width,
+               (double)frame.size.height]);
     }
 
     %orig;
