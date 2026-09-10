@@ -1,12 +1,5 @@
 #!/bin/sh
 
-TOOL="/var/jb/usr/bin/RestoreAVControls"
-
-if [ -x "$TOOL" ]; then
-    "$TOOL"
-fi
-
-killall -9 cfprefsd 2>/dev/null || true
 killall -9 SpringBoard 2>/dev/null || true
 
 rm -rf "/var/mobile/Library/HideAVControlsBackup"
