@@ -1,4 +1,4 @@
-name: Build Dual Debs (Roothide & Rootless)
+name: Build Dual Debs
 
 on:
   push:
@@ -12,6 +12,7 @@ jobs:
     runs-on: macos-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -31,9 +32,14 @@ jobs:
       - name: Fix Private Frameworks
         run: |
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+
           if [ -d "$SDK_PATH/System/Library/PrivateFrameworks/Preferences.framework" ]; then
             mkdir -p $HOME/theos/sdks/iPhoneOS16.5.sdk/System/Library/PrivateFrameworks
-            cp -R "$SDK_PATH/System/Library/PrivateFrameworks/Preferences.framework" $HOME/theos/sdks/iPhoneOS16.5.sdk/System/Library/PrivateFrameworks/ || true
+
+            cp -R \
+              "$SDK_PATH/System/Library/PrivateFrameworks/Preferences.framework" \
+              $HOME/theos/sdks/iPhoneOS16.5.sdk/System/Library/PrivateFrameworks/ \
+              || true
           fi
 
       - name: Fix Maintainer Script Permissions
@@ -42,22 +48,27 @@ jobs:
           chmod 755 layout/DEBIAN/prerm
           chmod 755 layout/DEBIAN/postrm
 
-      - name: Build Roothide Package
-        run: |
-          make clean package THEOS_PACKAGE_SCHEME=roothide SYSROOT=$HOME/theos/sdks/iPhoneOS16.5.sdk FINALPACKAGE=1
-
-      - name: Fix Maintainer Script Permissions Again
-        run: |
-          chmod 755 layout/DEBIAN/postinst
-          chmod 755 layout/DEBIAN/prerm
-          chmod 755 layout/DEBIAN/postrm
-
       - name: Build Rootless Package
         run: |
-          make clean package THEOS_PACKAGE_SCHEME=rootless SYSROOT=$HOME/theos/sdks/iPhoneOS16.5.sdk FINALPACKAGE=1
+          make clean
+          make package \
+            THEOS_PACKAGE_SCHEME=rootless \
+            SYSROOT=$HOME/theos/sdks/iPhoneOS16.5.sdk \
+            FINALPACKAGE=1
+
+      - name: Verify Rootless Package Contents
+        run: |
+          echo "=== PACKAGE FILES ==="
+          find packages -type f -name "*.deb" -print
+
+          echo "=== PACKAGE CONTENTS ==="
+          for deb in packages/*.deb; do
+            echo "----- $deb -----"
+            dpkg-deb -c "$deb"
+          done
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: HideAVControls-1.0-Debs
+          name: HideAVControls-1.0-Rootless
           path: packages/*.deb
