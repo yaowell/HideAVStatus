@@ -9,39 +9,22 @@ static void CCWriteLog(NSString *text) {
     [out writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
 
-static NSString *CCIdentifier(id instance) {
-    NSString *identifier = nil;
-
-    @try {
-        identifier = [instance valueForKey:@"moduleIdentifier"];
-
-        if (!identifier)
-            identifier = [instance valueForKey:@"identifier"];
-
-        if (!identifier)
-            identifier = [[instance valueForKey:@"moduleRepresentation"] valueForKey:@"identifier"];
-    }
-    @catch (NSException *exception) {
-    }
-
-    return identifier ?: @"(unknown)";
-}
-
 static void CCLogInstances(NSString *method, NSArray *instances) {
-    CCWriteLog([NSString stringWithFormat:
-        @"[%@] count=%lu",
-        method,
-        (unsigned long)instances.count]);
+    CCWriteLog([NSString stringWithFormat:@"[%@] count=%lu",
+                method,
+                (unsigned long)instances.count]);
 
     NSUInteger index = 0;
 
     for (id instance in instances) {
-        NSString *identifier = CCIdentifier(instance);
+        NSString *className = NSStringFromClass([instance class]);
+        NSString *description = [instance description];
 
         CCWriteLog([NSString stringWithFormat:
-            @"  [%lu] %@",
-            (unsigned long)index,
-            identifier]);
+                    @"  [%lu] class=%@ object=%@",
+                    (unsigned long)index,
+                    className ?: @"(nil)",
+                    description ?: @"(nil)"]);
 
         index++;
     }
@@ -51,17 +34,13 @@ static void CCLogInstances(NSString *method, NSArray *instances) {
 
 - (NSArray *)moduleInstances {
     NSArray *result = %orig;
-
     CCLogInstances(@"moduleInstances", result);
-
     return result;
 }
 
 - (NSArray *)enabledModuleInstances {
     NSArray *result = %orig;
-
     CCLogInstances(@"enabledModuleInstances", result);
-
     return result;
 }
 
@@ -69,7 +48,7 @@ static void CCLogInstances(NSString *method, NSArray *instances) {
 
 %ctor {
     CCWriteLog(@"==============================================");
-    CCWriteLog(@"[CC Module Instance Probe]");
+    CCWriteLog(@"[CC Module Instance Type Probe]");
     CCWriteLog(@"Hook: CCUIModuleInstanceManager");
     CCWriteLog(@"Mode: Original value only");
     CCWriteLog(@"==============================================");
