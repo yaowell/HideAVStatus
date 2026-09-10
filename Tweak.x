@@ -1,67 +1,38 @@
-#import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
+#import <objc/runtime.h>
 
-static NSString *const kLogPath =
-@"/var/mobile/Documents/CC_AudioHeight.log";
-
-static void WriteLog(NSString *text)
-{
-    if (!text) return;
-
-    NSFileManager *fm = [NSFileManager defaultManager];
-
-    if (![fm fileExistsAtPath:kLogPath]) {
-        [fm createFileAtPath:kLogPath
-                    contents:nil
-                  attributes:nil];
-    }
-
-    NSFileHandle *file =
-        [NSFileHandle fileHandleForWritingAtPath:kLogPath];
-
-    if (!file) return;
-
-    [file seekToEndOfFile];
-
-    NSString *line =
-        [NSString stringWithFormat:@"%@\n", text];
-
-    [file writeData:
-        [line dataUsingEncoding:NSUTF8StringEncoding]];
-
-    [file closeFile];
+static void CCWriteLog(NSString *text) {
+    NSString *path = @"/var/mobile/Documents/CC_LayoutProbe.log";
+    NSString *old = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
+    if (!old) old = @"";
+    NSString *line = [NSString stringWithFormat:@"%@\n", text];
+    NSString *out = [old stringByAppendingString:line];
+    [out writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
 
-%hook RPCCAudioSettingsModuleBackgroundViewController
+%hook CCUIModuleCollectionViewController
 
-- (double)CCUIMenuModuleViewHeight
+- (CGSize)layoutSizeForModuleIdentifier:(NSString *)identifier
+                         forOrientation:(NSInteger)orientation
 {
-    double height = %orig;
+    CGSize size = %orig;
 
-    WriteLog([NSString stringWithFormat:
-              @"[Audio Height] %.4f",
-              height]);
+    CCWriteLog([NSString stringWithFormat:
+        @"[layoutSizeForModuleIdentifier] id=%@ orientation=%ld size=%.2fx%.2f",
+        identifier ?: @"(nil)",
+        (long)orientation,
+        size.width,
+        size.height]);
 
-    return height;
+    return size;
 }
 
 %end
 
-%ctor
-{
-    @autoreleasepool {
-        NSString *bundleID =
-            [[NSBundle mainBundle] bundleIdentifier];
-
-        if (![bundleID isEqualToString:
-              @"com.apple.springboard"]) {
-            return;
-        }
-
-        WriteLog(@"==============================================");
-        WriteLog(@"[Audio Height Probe]");
-        WriteLog(@"Hook: CCUIMenuModuleViewHeight");
-        WriteLog(@"Mode: Original value only");
-        WriteLog(@"==============================================");
-    }
+%ctor {
+    CCWriteLog(@"==============================================");
+    CCWriteLog(@"[CCUI Layout Probe]");
+    CCWriteLog(@"Hook: CCUIModuleCollectionViewController");
+    CCWriteLog(@"Mode: Original value only");
+    CCWriteLog(@"==============================================");
 }
