@@ -4,30 +4,23 @@
 
 static NSString *const kLogFilePath = @"/var/mobile/Documents/CC_Probe.log";
 
-static NSMutableSet *gRecordedEntries = nil;
-static dispatch_queue_t gLogQueue = nil;
+static NSMutableSet *gRecordedEntries;
+static dispatch_queue_t gLogQueue;
 
-static void BMLog(NSString *message)
+static void BMLog(NSString *msg)
 {
     static dispatch_once_t onceToken;
-
     dispatch_once(&onceToken, ^{
         gRecordedEntries = [NSMutableSet set];
-        gLogQueue = dispatch_queue_create("com.yaowell.hideavcontrols.probe", DISPATCH_QUEUE_SERIAL);
-
+        gLogQueue = dispatch_queue_create("com.yaowell.ccprobe.log", DISPATCH_QUEUE_SERIAL);
         [[NSFileManager defaultManager] removeItemAtPath:kLogFilePath error:nil];
     });
 
-    if (!message) {
-        return;
-    }
+    if (!msg) return;
 
     dispatch_async(gLogQueue, ^{
-        if ([gRecordedEntries containsObject:message]) {
-            return;
-        }
-
-        [gRecordedEntries addObject:message];
+        if ([gRecordedEntries containsObject:msg]) return;
+        [gRecordedEntries addObject:msg];
 
         NSFileManager *fm = [NSFileManager defaultManager];
 
@@ -35,230 +28,216 @@ static void BMLog(NSString *message)
             [fm createFileAtPath:kLogFilePath contents:nil attributes:nil];
         }
 
-        NSFileHandle *handle =
+        NSFileHandle *h =
             [NSFileHandle fileHandleForWritingAtPath:kLogFilePath];
 
-        if (!handle) {
-            return;
-        }
+        if (!h) return;
 
-        [handle seekToEndOfFile];
+        [h seekToEndOfFile];
 
         NSString *line =
-            [NSString stringWithFormat:@"%@\n", message];
+            [NSString stringWithFormat:@"%@\n", msg];
 
-        [handle writeData:
+        [h writeData:
             [line dataUsingEncoding:NSUTF8StringEncoding]];
 
-        [handle closeFile];
+        [h closeFile];
     });
 }
 
-static BOOL BMClassMatches(NSString *name)
+static NSString *BMClassName(id obj)
 {
-    if (!name) {
-        return NO;
-    }
-
-    if ([name hasPrefix:@"CCUI"]) {
-        return YES;
-    }
-
-    NSArray *keywords = @[
-        @"Module",
-        @"Layout",
-        @"Grid",
-        @"Collection",
-        @"Content"
-    ];
-
-    for (NSString *keyword in keywords) {
-        if ([name containsString:keyword] &&
-            [name containsString:@"CC"]) {
-            return YES;
-        }
-    }
-
-    return NO;
+    if (!obj) return @"nil";
+    return NSStringFromClass([obj class]) ?: @"Unknown";
 }
 
-static BOOL BMSelectorMatches(NSString *name)
+static NSString *BMModuleIdentifier(id obj)
 {
-    if (!name) {
-        return NO;
+    if (!obj) return @"Unknown";
+
+    @try {
+        id value = [obj valueForKey:@"moduleIdentifier"];
+        if (value) return [value description];
     }
+    @catch (__unused NSException *e) {}
 
-    NSString *lower =
-        [name lowercaseString];
-
-    NSArray *keywords = @[
-        @"layout",
-        @"layoutsubviews",
-        @"size",
-        @"frame",
-        @"height",
-        @"width",
-        @"content",
-        @"module",
-        @"margin",
-        @"padding",
-        @"inset",
-        @"constraint"
-    ];
-
-    for (NSString *keyword in keywords) {
-        if ([lower containsString:keyword]) {
-            return YES;
-        }
+    @try {
+        id value = [obj valueForKey:@"identifier"];
+        if (value) return [value description];
     }
+    @catch (__unused NSException *e) {}
 
-    return NO;
+    return @"Unknown";
 }
 
-static void BMScanRuntime(void)
+%hook CCUIModuleCollectionViewController
+
+- (CGSize)layoutSizeForModuleIdentifier:(NSString *)identifier
+                         forOrientation:(long long)orientation
 {
-    int classCount =
-        objc_getClassList(NULL, 0);
+    CGSize result =
+        %orig(identifier, orientation);
 
-    if (classCount <= 0) {
-        return;
-    }
-
-    Class *classes =
-        (Class *)malloc(sizeof(Class) * classCount);
-
-    if (!classes) {
-        return;
-    }
-
-    classCount =
-        objc_getClassList(classes, classCount);
-
-    BMLog([NSString stringWithFormat:
-           @"[Scan] Loaded classes: %d",
-           classCount]);
-
-    for (int i = 0; i < classCount; i++) {
-
-        Class cls = classes[i];
-
-        if (!cls) {
-            continue;
-        }
-
-        NSString *className =
-            NSStringFromClass(cls);
-
-        if (!BMClassMatches(className)) {
-            continue;
-        }
-
-        unsigned int methodCount = 0;
-
-        Method *methods =
-            class_copyMethodList(cls, &methodCount);
-
-        if (!methods) {
-            continue;
-        }
-
-        NSMutableArray *selectors =
-            [NSMutableArray array];
-
-        for (unsigned int j = 0;
-             j < methodCount;
-             j++) {
-
-            SEL sel =
-                method_getName(methods[j]);
-
-            if (!sel) {
-                continue;
-            }
-
-            NSString *selectorName =
-                NSStringFromSelector(sel);
-
-            if (BMSelectorMatches(selectorName)) {
-
-                if (![selectors containsObject:selectorName]) {
-                    [selectors addObject:selectorName];
-                }
-            }
-        }
-
-        free(methods);
-
-        if (selectors.count == 0) {
-            continue;
-        }
-
-        [selectors
-            sortUsingSelector:@selector(compare:)];
+    if (identifier &&
+        ([identifier containsString:@"RPCCAudio"] ||
+         [identifier containsString:@"RPCCVideo"] ||
+         [identifier containsString:@"AudioConference"] ||
+         [identifier containsString:@"VideoConference"])) {
 
         BMLog([NSString stringWithFormat:
-               @"[Class] %@ | Methods: %@",
-               className,
-               [selectors
-                   componentsJoinedByString:@", "]]);
+               @"[SIZE] CCUIModuleCollectionViewController | %@ | orientation=%lld | size=(%.2f, %.2f)",
+               identifier,
+               orientation,
+               result.width,
+               result.height]);
     }
 
-    free(classes);
+    return result;
 }
 
-static void BMStartProbe(void)
+- (void)moduleInstancesLayoutChangedForModuleInstanceManager:(id)manager
 {
-    BMLog(@"");
-    BMLog(@"==============================================");
-    BMLog(@"[Probe] Runtime-only probe started");
-    BMLog(@"[Probe] No Logos hooks are active");
-    BMLog(@"[Probe] No plist modifications");
-    BMLog(@"[Probe] No Control Center modifications");
-    BMLog(@"==============================================");
+    BMLog(@"[LAYOUT CHANGE] CCUIModuleCollectionViewController");
 
-    __block int scanNumber = 0;
-
-    dispatch_queue_t mainQueue =
-        dispatch_get_main_queue();
-
-    dispatch_async(mainQueue, ^{
-
-        NSTimer *timer =
-            [NSTimer scheduledTimerWithTimeInterval:2.0
-                                             repeats:YES
-                                               block:^(NSTimer *t) {
-
-            scanNumber++;
-
-            BMLog([NSString stringWithFormat:
-                   @"[Scan #%d] Runtime scan",
-                   scanNumber]);
-
-            dispatch_async(
-                dispatch_get_global_queue(
-                    QOS_CLASS_UTILITY,
-                    0
-                ),
-                ^{
-                    BMScanRuntime();
-                }
-            );
-
-            if (scanNumber >= 15) {
-                [t invalidate];
-
-                BMLog(@"");
-                BMLog(@"==============================================");
-                BMLog(@"[Probe] 30 second scan finished");
-                BMLog(@"==============================================");
-            }
-        }];
-
-        [[NSRunLoop mainRunLoop]
-            addTimer:timer
-            forMode:NSRunLoopCommonModes];
-    });
+    %orig(manager);
 }
+
+%end
+
+%hook CCUIControlCenterPositionProvider
+
+- (CGRect)layoutRectForIdentifier:(NSString *)identifier
+{
+    CGRect result =
+        %orig(identifier);
+
+    if (identifier &&
+        ([identifier containsString:@"RPCCAudio"] ||
+         [identifier containsString:@"RPCCVideo"] ||
+         [identifier containsString:@"AudioConference"] ||
+         [identifier containsString:@"VideoConference"])) {
+
+        BMLog([NSString stringWithFormat:
+               @"[RECT] CCUIControlCenterPositionProvider | %@ | rect=(%.2f, %.2f, %.2f, %.2f)",
+               identifier,
+               result.origin.x,
+               result.origin.y,
+               result.size.width,
+               result.size.height]);
+    }
+
+    return result;
+}
+
+- (CGSize)layoutSize
+{
+    CGSize result = %orig;
+
+    BMLog([NSString stringWithFormat:
+           @"[TOTAL SIZE] CCUIControlCenterPositionProvider | size=(%.2f, %.2f)",
+           result.width,
+           result.height]);
+
+    return result;
+}
+
+%end
+
+%hook CCUIModularControlCenterOverlayViewController
+
+- (NSInteger)moduleRowCount
+{
+    NSInteger result = %orig;
+
+    BMLog([NSString stringWithFormat:
+           @"[ROW COUNT] CCUIModularControlCenterOverlayViewController | %ld",
+           (long)result]);
+
+    return result;
+}
+
+- (CGSize)moduleLayoutSizeForContentModuleContext:(id)context
+                                   forOrientation:(long long)orientation
+{
+    CGSize result =
+        %orig(context, orientation);
+
+    BMLog([NSString stringWithFormat:
+           @"[MODULE LAYOUT SIZE] CCUIModularControlCenterOverlayViewController | orientation=%lld | size=(%.2f, %.2f)",
+           orientation,
+           result.width,
+           result.height]);
+
+    return result;
+}
+
+- (void)moduleInstancesLayoutChangedForModuleInstanceManager:(id)manager
+{
+    BMLog(@"[OVERLAY LAYOUT CHANGE] CCUIModularControlCenterOverlayViewController");
+
+    %orig(manager);
+}
+
+%end
+
+%hook CCUIModuleInstanceManager
+
+- (CGSize)moduleLayoutSizeForContentModuleContext:(id)context
+                                   forOrientation:(long long)orientation
+{
+    CGSize result =
+        %orig(context, orientation);
+
+    BMLog([NSString stringWithFormat:
+           @"[INSTANCE MANAGER SIZE] orientation=%lld | size=(%.2f, %.2f)",
+           orientation,
+           result.width,
+           result.height]);
+
+    return result;
+}
+
+- (void)requestModuleLayoutSizeUpdateForContentModuleContext:(id)context
+{
+    BMLog(@"[REQUEST SIZE UPDATE] CCUIModuleInstanceManager");
+
+    %orig(context);
+}
+
+%end
+
+%hook CCUIContentModuleContainerViewController
+
+- (void)viewWillLayoutSubviews
+{
+    id module = nil;
+    NSString *identifier = @"Unknown";
+
+    @try {
+        module = [self valueForKey:@"contentModule"];
+        identifier = BMModuleIdentifier(module);
+    }
+    @catch (__unused NSException *e) {}
+
+    if ([identifier containsString:@"RPCCAudio"] ||
+        [identifier containsString:@"RPCCVideo"] ||
+        [identifier containsString:@"AudioConference"] ||
+        [identifier containsString:@"VideoConference"]) {
+
+        BMLog([NSString stringWithFormat:
+               @"[CONTAINER LAYOUT] %@ | module=%@ | frame=(%.2f, %.2f, %.2f, %.2f)",
+               identifier,
+               BMClassName(module),
+               self.view.frame.origin.x,
+               self.view.frame.origin.y,
+               self.view.frame.size.width,
+               self.view.frame.size.height]);
+    }
+
+    %orig;
+}
+
+%end
 
 %ctor
 {
@@ -267,17 +246,16 @@ static void BMStartProbe(void)
         NSString *bundleID =
             [[NSBundle mainBundle] bundleIdentifier];
 
-        if (![bundleID isEqualToString:
-              @"com.apple.springboard"]) {
+        if (![bundleID isEqualToString:@"com.apple.springboard"]) {
             return;
         }
 
-        BMLog(@"");
         BMLog(@"==============================================");
-        BMLog(@"[Probe] HideAVControls Runtime Probe Loaded");
+        BMLog(@"[Probe] Precise CC Layout Probe Loaded");
         BMLog(@"[Probe] SpringBoard detected");
+        BMLog(@"[Probe] Observation only");
+        BMLog(@"[Probe] No plist modification");
+        BMLog(@"[Probe] No layout modification");
         BMLog(@"==============================================");
-
-        BMStartProbe();
     }
 }
