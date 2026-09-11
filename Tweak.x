@@ -3,17 +3,11 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
-typedef struct {
-    NSUInteger width;
-    NSUInteger height;
-} CCUILayoutSize;
-
-static NSString * const kLogPath =
-    @"/var/mobile/Documents/HideAVProbe.log";
+static NSString * const kProbeLogPath = @"/var/mobile/Documents/HideAVProbe.log";
 
 static void HVLog(NSString *format, ...)
 {
-    @autoreleasepool {
+    @try {
         va_list args;
         va_start(args, format);
 
@@ -23,33 +17,32 @@ static void HVLog(NSString *format, ...)
         va_end(args);
 
         NSString *line =
-            [NSString stringWithFormat:@"%@ [HideAVProbe] %@\n",
-             [NSDate date],
-             message];
+            [NSString stringWithFormat:@"%@\n", message];
 
         NSFileHandle *file =
-            [NSFileHandle fileHandleForWritingAtPath:kLogPath];
+            [NSFileHandle fileHandleForWritingAtPath:kProbeLogPath];
 
         if (!file) {
             [[NSFileManager defaultManager]
-                createFileAtPath:kLogPath
+                createFileAtPath:kProbeLogPath
                 contents:nil
                 attributes:nil];
 
             file =
-                [NSFileHandle fileHandleForWritingAtPath:kLogPath];
+                [NSFileHandle fileHandleForWritingAtPath:kProbeLogPath];
         }
 
         if (file) {
             [file seekToEndOfFile];
-            [file writeData:
-                [line dataUsingEncoding:NSUTF8StringEncoding]];
+            [file writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
             [file closeFile];
         }
     }
+    @catch (NSException *exception) {
+    }
 }
 
-static BOOL IsRPCCModule(id instance)
+static BOOL HVIsRPCCModule(id instance)
 {
     if (!instance) {
         return NO;
@@ -75,47 +68,29 @@ static BOOL IsRPCCModule(id instance)
         NSString *name =
             NSStringFromClass([module class]);
 
-        return [name isEqualToString:
-                    @"RPCCAudioSettingsModule"] ||
-               [name isEqualToString:
-                    @"RPCCVideoSettingsModule"];
+        return
+            [name isEqualToString:@"RPCCAudioSettingsModule"] ||
+            [name isEqualToString:@"RPCCVideoSettingsModule"];
     }
     @catch (NSException *exception) {
         return NO;
     }
 }
 
-static BOOL IsHiddenReplayKitModuleIdentifier(id identifier)
+static void HVLogModuleArray(NSArray *array, NSString *tag)
 {
-    if (![identifier isKindOfClass:[NSString class]]) {
-        return NO;
+    if (![array isKindOfClass:[NSArray class]]) {
+        HVLog(@"%@ -> NOT ARRAY | %@", tag, array);
+        return;
     }
 
-    NSString *value = (NSString *)identifier;
+    BOOL audio = NO;
+    BOOL video = NO;
 
-    return [value isEqualToString:
-                @"com.apple.replaykit.VideoConferenceControlCenterModule"];
-}
-
-static NSArray *FilterRPCCModules(NSArray *original)
-{
-    if (![original isKindOfClass:[NSArray class]]) {
-        return original;
-    }
-
-    NSMutableArray *filtered =
-        [NSMutableArray arrayWithCapacity:original.count];
-
-    NSUInteger audioCount = 0;
-    NSUInteger videoCount = 0;
-
-    for (id instance in original) {
-
-        if (IsRPCCModule(instance)) {
-
+    for (id instance in array) {
+        if (HVIsRPCCModule(instance)) {
             @try {
-                SEL moduleSel =
-                    sel_registerName("module");
+                SEL moduleSel = sel_registerName("module");
 
                 id module =
                     ((id (*)(id, SEL))objc_msgSend)(
@@ -124,63 +99,54 @@ static NSArray *FilterRPCCModules(NSArray *original)
                     );
 
                 NSString *name =
-                    module ?
-                    NSStringFromClass([module class]) :
-                    @"<nil>";
+                    NSStringFromClass([module class]);
 
-                if ([name isEqualToString:
-                         @"RPCCAudioSettingsModule"]) {
-                    audioCount++;
+                if ([name isEqualToString:@"RPCCAudioSettingsModule"]) {
+                    audio = YES;
                 }
 
-                if ([name isEqualToString:
-                         @"RPCCVideoSettingsModule"]) {
-                    videoCount++;
+                if ([name isEqualToString:@"RPCCVideoSettingsModule"]) {
+                    video = YES;
                 }
 
                 HVLog(
-                    @"RPCC FILTER -> instance=%p | module=%@ | module=%p",
+                    @"%@ -> instance=%p | module=%@ | module=%p",
+                    tag,
                     instance,
                     name,
                     module
                 );
             }
             @catch (NSException *exception) {
-                HVLog(
-                    @"RPCC FILTER EXCEPTION -> %@",
-                    exception.reason
-                );
             }
-
-            continue;
         }
-
-        [filtered addObject:instance];
     }
 
     HVLog(
-        @"FILTER -> original=%lu | audio=%lu | video=%lu | returned=%lu",
-        (unsigned long)original.count,
-        (unsigned long)audioCount,
-        (unsigned long)videoCount,
-        (unsigned long)filtered.count
+        @"%@ -> count=%lu | Audio=%@ | Video=%@",
+        tag,
+        (unsigned long)array.count,
+        audio ? @"YES" : @"NO",
+        video ? @"YES" : @"NO"
     );
-
-    return filtered;
 }
-
-#pragma mark - Module Collection Controller
 
 %hook CCUIModuleCollectionViewController
 
 - (id)initWithModuleInstanceManager:(id)manager
 {
+    HVLog(
+        @"INIT CCUIModuleCollectionViewController | self=%p | manager=%p",
+        self,
+        manager
+    );
+
     id result = %orig;
 
     HVLog(
-        @"INIT -> CollectionVC=%p | manager=%p",
-        result,
-        manager
+        @"INIT FINISHED | self=%p | result=%p",
+        self,
+        result
     );
 
     return result;
@@ -189,114 +155,230 @@ static NSArray *FilterRPCCModules(NSArray *original)
 - (void)moduleInstancesChangedForModuleInstanceManager:(id)manager
 {
     HVLog(
-        @"EVENT moduleInstancesChanged -> manager=%p",
+        @"===== EVENT moduleInstancesChanged ===== | self=%p | manager=%p",
+        self,
         manager
     );
 
     %orig;
 
     HVLog(
-        @"EVENT moduleInstancesChanged -> AFTER %p",
+        @"EVENT moduleInstancesChanged -> AFTER | self=%p",
+        self
+    );
+}
+
+- (void)orderedEnabledModuleIdentifiersChangedForSettingsManager:(id)manager
+{
+    HVLog(
+        @"===== EVENT orderedEnabledModuleIdentifiersChanged ===== | self=%p | manager=%p",
+        self,
+        manager
+    );
+
+    %orig;
+
+    HVLog(
+        @"EVENT orderedEnabledModuleIdentifiersChanged -> AFTER | self=%p",
+        self
+    );
+}
+
+- (void)moduleInstancesLayoutChangedForModuleInstanceManager:(id)manager
+{
+    HVLog(
+        @"===== EVENT moduleInstancesLayoutChanged ===== | self=%p | manager=%p",
+        self,
+        manager
+    );
+
+    %orig;
+
+    HVLog(
+        @"EVENT moduleInstancesLayoutChanged -> AFTER | self=%p",
+        self
+    );
+}
+
+- (void)_updateEnabledModuleIdentifiers
+{
+    HVLog(
+        @"===== CALL _updateEnabledModuleIdentifiers ===== | self=%p",
+        self
+    );
+
+    %orig;
+
+    HVLog(
+        @"_updateEnabledModuleIdentifiers -> AFTER | self=%p",
+        self
+    );
+}
+
+- (void)_updateModuleControllers
+{
+    HVLog(
+        @"===== CALL _updateModuleControllers ===== | self=%p",
+        self
+    );
+
+    %orig;
+
+    HVLog(
+        @"_updateModuleControllers -> AFTER | self=%p",
+        self
+    );
+}
+
+- (void)_populateModulesIfNecessary
+{
+    HVLog(
+        @"===== CALL _populateModulesIfNecessary ===== | self=%p",
+        self
+    );
+
+    %orig;
+
+    HVLog(
+        @"_populateModulesIfNecessary -> AFTER | self=%p",
+        self
+    );
+}
+
+- (void)_populateModuleViewControllers
+{
+    HVLog(
+        @"===== CALL _populateModuleViewControllers ===== | self=%p",
+        self
+    );
+
+    %orig;
+
+    HVLog(
+        @"_populateModuleViewControllers -> AFTER | self=%p",
         self
     );
 }
 
 - (void)_setupAndAddModuleViewControllerToHierarchy:(id)controller
 {
+    NSString *className =
+        controller ? NSStringFromClass([controller class]) : @"<nil>";
+
     HVLog(
-        @"SETUP/ADD -> controller=%@ | controller=%p",
-        controller ?
-            NSStringFromClass([controller class]) :
-            @"<nil>",
+        @"===== CALL _setupAndAdd... ===== | self=%p | controller=%@ | controller=%p",
+        self,
+        className,
         controller
     );
 
-    id identifier = nil;
-
     @try {
-        SEL identifierSel =
-            sel_registerName("moduleIdentifier");
+        SEL identifierSel = sel_registerName("moduleIdentifier");
 
-        if ([controller respondsToSelector:identifierSel]) {
-            identifier =
+        if (controller &&
+            [controller respondsToSelector:identifierSel]) {
+
+            id identifier =
                 ((id (*)(id, SEL))objc_msgSend)(
                     controller,
                     identifierSel
                 );
+
+            HVLog(
+                @"SETUP/ADD -> moduleIdentifier=%@",
+                identifier
+            );
         }
     }
     @catch (NSException *exception) {
         HVLog(
-            @"IDENTIFIER EXCEPTION -> %@",
-            exception.reason
+            @"SETUP/ADD -> identifier exception=%@",
+            exception
         );
     }
 
-    if (!identifier) {
-        @try {
-            SEL identifierSel =
-                sel_registerName("identifier");
+    /*
+     * 最重要：
+     * 这里绝对不阻止，不改变返回值。
+     */
+    %orig;
 
-            if ([controller respondsToSelector:identifierSel]) {
-                identifier =
-                    ((id (*)(id, SEL))objc_msgSend)(
-                        controller,
-                        identifierSel
-                    );
-            }
-        }
-        @catch (NSException *exception) {
+    HVLog(
+        @"SETUP/ADD -> FINISHED | self=%p | controller=%p",
+        self,
+        controller
+    );
+}
+
+- (void)_removeAndTearDownModuleViewControllerFromHierarchy:(id)controller
+{
+    NSString *className =
+        controller ? NSStringFromClass([controller class]) : @"<nil>";
+
+    HVLog(
+        @"===== CALL _removeAndTearDown... ===== | self=%p | controller=%@ | controller=%p",
+        self,
+        className,
+        controller
+    );
+
+    @try {
+        SEL identifierSel = sel_registerName("moduleIdentifier");
+
+        if (controller &&
+            [controller respondsToSelector:identifierSel]) {
+
+            id identifier =
+                ((id (*)(id, SEL))objc_msgSend)(
+                    controller,
+                    identifierSel
+                );
+
             HVLog(
-                @"IDENTIFIER FALLBACK EXCEPTION -> %@",
-                exception.reason
+                @"REMOVE -> moduleIdentifier=%@",
+                identifier
             );
         }
     }
-
-    HVLog(
-        @"SETUP/ADD -> identifier=%@",
-        identifier
-    );
-
-    if (IsHiddenReplayKitModuleIdentifier(identifier)) {
-
+    @catch (NSException *exception) {
         HVLog(
-            @"BLOCK VIDEO -> %@ | controller=%p",
-            identifier,
-            controller
+            @"REMOVE -> identifier exception=%@",
+            exception
         );
-
-        HVLog(
-            @"BLOCK VIDEO -> %orig NOT CALLED"
-        );
-
-        return;
     }
 
     %orig;
 
     HVLog(
-        @"SETUP/ADD -> %orig FINISHED | identifier=%@",
-        identifier
+        @"REMOVE -> FINISHED | self=%p | controller=%p",
+        self,
+        controller
     );
 }
 
 - (id)moduleViewForIdentifier:(id)identifier
 {
-    if (IsHiddenReplayKitModuleIdentifier(identifier)) {
+    if ([identifier isKindOfClass:[NSString class]]) {
         HVLog(
-            @"moduleViewForIdentifier -> VIDEO identifier=%@",
+            @"moduleViewForIdentifier -> %@",
             identifier
         );
     }
 
     id result = %orig;
 
-    if (IsHiddenReplayKitModuleIdentifier(identifier)) {
-        HVLog(
-            @"moduleViewForIdentifier -> VIDEO result=%p",
-            result
-        );
+    if ([identifier isKindOfClass:[NSString class]]) {
+        if ([identifier isEqualToString:
+             @"com.apple.replaykit.AudioConferenceControlCenterModule"] ||
+            [identifier isEqualToString:
+             @"com.apple.replaykit.VideoConferenceControlCenterModule"]) {
+
+            HVLog(
+                @"moduleViewForIdentifier RESULT -> %@ | result=%p",
+                identifier,
+                result
+            );
+        }
     }
 
     return result;
@@ -304,132 +386,59 @@ static NSArray *FilterRPCCModules(NSArray *original)
 
 %end
 
-#pragma mark - Module Instance Manager
-
 %hook CCUIModuleInstanceManager
 
 - (NSArray *)moduleInstances
 {
-    NSArray *original = %orig;
+    NSArray *result = %orig;
 
-    if ([original isKindOfClass:[NSArray class]]) {
+    HVLogModuleArray(
+        result,
+        @"moduleInstances"
+    );
 
-        NSUInteger audio = 0;
-        NSUInteger video = 0;
-
-        for (id instance in original) {
-
-            @try {
-                SEL moduleSel =
-                    sel_registerName("module");
-
-                id module =
-                    ((id (*)(id, SEL))objc_msgSend)(
-                        instance,
-                        moduleSel
-                    );
-
-                NSString *name =
-                    module ?
-                    NSStringFromClass([module class]) :
-                    @"";
-
-                if ([name isEqualToString:
-                         @"RPCCAudioSettingsModule"]) {
-                    audio++;
-                }
-
-                if ([name isEqualToString:
-                         @"RPCCVideoSettingsModule"]) {
-                    video++;
-                }
-            }
-            @catch (NSException *exception) {
-            }
-        }
-
-        HVLog(
-            @"moduleInstances -> count=%lu | Audio=%@ | Video=%@",
-            (unsigned long)original.count,
-            audio ? @"YES" : @"NO",
-            video ? @"YES" : @"NO"
-        );
-    }
-
-    return FilterRPCCModules(original);
+    return result;
 }
 
 - (NSArray *)enabledModuleInstances
 {
-    NSArray *original = %orig;
+    NSArray *result = %orig;
 
-    if ([original isKindOfClass:[NSArray class]]) {
+    HVLogModuleArray(
+        result,
+        @"enabledModuleInstances"
+    );
 
-        NSUInteger audio = 0;
-        NSUInteger video = 0;
-
-        for (id instance in original) {
-
-            @try {
-                SEL moduleSel =
-                    sel_registerName("module");
-
-                id module =
-                    ((id (*)(id, SEL))objc_msgSend)(
-                        instance,
-                        moduleSel
-                    );
-
-                NSString *name =
-                    module ?
-                    NSStringFromClass([module class]) :
-                    @"";
-
-                if ([name isEqualToString:
-                         @"RPCCAudioSettingsModule"]) {
-                    audio++;
-                }
-
-                if ([name isEqualToString:
-                         @"RPCCVideoSettingsModule"]) {
-                    video++;
-                }
-            }
-            @catch (NSException *exception) {
-            }
-        }
-
-        HVLog(
-            @"enabledModuleInstances -> count=%lu | Audio=%@ | Video=%@",
-            (unsigned long)original.count,
-            audio ? @"YES" : @"NO",
-            video ? @"YES" : @"NO"
-        );
-    }
-
-    return FilterRPCCModules(original);
+    return result;
 }
 
 %end
-
-#pragma mark - Module Instance
 
 %hook CCUIModuleInstance
 
 - (CCUILayoutSize)prototypeModuleSize
 {
-    if (IsRPCCModule(self)) {
+    /*
+     * 这里只观察，不改变尺寸。
+     */
+    if (HVIsRPCCModule(self)) {
+        @try {
+            SEL moduleSel = sel_registerName("module");
 
-        HVLog(
-            @"prototypeModuleSize -> RPCC ZERO | instance=%p",
-            self
-        );
+            id module =
+                ((id (*)(id, SEL))objc_msgSend)(
+                    self,
+                    moduleSel
+                );
 
-        CCUILayoutSize zeroSize;
-        zeroSize.width = 0;
-        zeroSize.height = 0;
-
-        return zeroSize;
+            HVLog(
+                @"prototypeModuleSize -> RPCC | instance=%p | module=%@",
+                self,
+                NSStringFromClass([module class])
+            );
+        }
+        @catch (NSException *exception) {
+        }
     }
 
     return %orig;
@@ -437,44 +446,11 @@ static NSArray *FilterRPCCModules(NSArray *original)
 
 %end
 
-#pragma mark - Constructor
-
-__attribute__((constructor))
-static void HideAVProbeInit(void)
+%ctor
 {
-    @autoreleasepool {
-
-        HVLog(
-            @"========== HideAVProbe START =========="
-        );
-
-        HVLog(
-            @"Log file -> %@",
-            kLogPath
-        );
-
-        NSString *version =
-            [[UIDevice currentDevice] systemVersion];
-
-        HVLog(
-            @"Device -> %@",
-            version
-        );
-
-        HVLog(
-            @"Probe target -> _setupAndAddModuleViewControllerToHierarchy:"
-        );
-
-        HVLog(
-            @"Mode -> BLOCK ONLY VideoConferenceControlCenterModule"
-        );
-
-        HVLog(
-            @"Hooks installed"
-        );
-
-        HVLog(
-            @"========== READY =========="
-        );
-    }
+    HVLog(@"");
+    HVLog(@"========================================");
+    HVLog(@"HideAVProbe START");
+    HVLog(@"PID=%d", getpid());
+    HVLog(@"========================================");
 }
