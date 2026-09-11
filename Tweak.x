@@ -2,6 +2,8 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import <stdarg.h>
+#import <unistd.h>
 
 static NSString * const kProbeLogPath = @"/var/mobile/Documents/HideAVProbe.log";
 
@@ -34,7 +36,8 @@ static void HVLog(NSString *format, ...)
 
         if (file) {
             [file seekToEndOfFile];
-            [file writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+            [file writeData:
+                [line dataUsingEncoding:NSUTF8StringEncoding]];
             [file closeFile];
         }
     }
@@ -49,7 +52,8 @@ static BOOL HVIsRPCCModule(id instance)
     }
 
     @try {
-        SEL moduleSel = sel_registerName("module");
+        SEL moduleSel =
+            sel_registerName("module");
 
         if (![instance respondsToSelector:moduleSel]) {
             return NO;
@@ -80,7 +84,7 @@ static BOOL HVIsRPCCModule(id instance)
 static void HVLogModuleArray(NSArray *array, NSString *tag)
 {
     if (![array isKindOfClass:[NSArray class]]) {
-        HVLog(@"%@ -> NOT ARRAY | %@", tag, array);
+        HVLog(@"%@ -> NOT ARRAY", tag);
         return;
     }
 
@@ -88,37 +92,44 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
     BOOL video = NO;
 
     for (id instance in array) {
-        if (HVIsRPCCModule(instance)) {
-            @try {
-                SEL moduleSel = sel_registerName("module");
+        if (!HVIsRPCCModule(instance)) {
+            continue;
+        }
 
-                id module =
-                    ((id (*)(id, SEL))objc_msgSend)(
-                        instance,
-                        moduleSel
-                    );
+        @try {
+            SEL moduleSel =
+                sel_registerName("module");
 
-                NSString *name =
-                    NSStringFromClass([module class]);
-
-                if ([name isEqualToString:@"RPCCAudioSettingsModule"]) {
-                    audio = YES;
-                }
-
-                if ([name isEqualToString:@"RPCCVideoSettingsModule"]) {
-                    video = YES;
-                }
-
-                HVLog(
-                    @"%@ -> instance=%p | module=%@ | module=%p",
-                    tag,
+            id module =
+                ((id (*)(id, SEL))objc_msgSend)(
                     instance,
-                    name,
-                    module
+                    moduleSel
                 );
+
+            NSString *name =
+                module
+                ? NSStringFromClass([module class])
+                : @"<nil>";
+
+            if ([name isEqualToString:
+                 @"RPCCAudioSettingsModule"]) {
+                audio = YES;
             }
-            @catch (NSException *exception) {
+
+            if ([name isEqualToString:
+                 @"RPCCVideoSettingsModule"]) {
+                video = YES;
             }
+
+            HVLog(
+                @"%@ -> instance=%p | module=%@ | module=%p",
+                tag,
+                instance,
+                name,
+                module
+            );
+        }
+        @catch (NSException *exception) {
         }
     }
 
@@ -136,7 +147,7 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
 - (id)initWithModuleInstanceManager:(id)manager
 {
     HVLog(
-        @"INIT CCUIModuleCollectionViewController | self=%p | manager=%p",
+        @"===== INIT ===== | self=%p | manager=%p",
         self,
         manager
     );
@@ -144,7 +155,7 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
     id result = %orig;
 
     HVLog(
-        @"INIT FINISHED | self=%p | result=%p",
+        @"INIT -> AFTER | self=%p | result=%p",
         self,
         result
     );
@@ -179,8 +190,7 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
     %orig;
 
     HVLog(
-        @"EVENT orderedEnabledModuleIdentifiersChanged -> AFTER | self=%p",
-        self
+        @"orderedEnabledModuleIdentifiersChanged -> AFTER"
     );
 }
 
@@ -195,8 +205,7 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
     %orig;
 
     HVLog(
-        @"EVENT moduleInstancesLayoutChanged -> AFTER | self=%p",
-        self
+        @"moduleInstancesLayoutChanged -> AFTER"
     );
 }
 
@@ -210,8 +219,7 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
     %orig;
 
     HVLog(
-        @"_updateEnabledModuleIdentifiers -> AFTER | self=%p",
-        self
+        @"_updateEnabledModuleIdentifiers -> AFTER"
     );
 }
 
@@ -225,8 +233,7 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
     %orig;
 
     HVLog(
-        @"_updateModuleControllers -> AFTER | self=%p",
-        self
+        @"_updateModuleControllers -> AFTER"
     );
 }
 
@@ -240,8 +247,7 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
     %orig;
 
     HVLog(
-        @"_populateModulesIfNecessary -> AFTER | self=%p",
-        self
+        @"_populateModulesIfNecessary -> AFTER"
     );
 }
 
@@ -255,25 +261,24 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
     %orig;
 
     HVLog(
-        @"_populateModuleViewControllers -> AFTER | self=%p",
-        self
+        @"_populateModuleViewControllers -> AFTER"
     );
 }
 
 - (void)_setupAndAddModuleViewControllerToHierarchy:(id)controller
 {
-    NSString *className =
-        controller ? NSStringFromClass([controller class]) : @"<nil>";
-
     HVLog(
-        @"===== CALL _setupAndAdd... ===== | self=%p | controller=%@ | controller=%p",
+        @"===== CALL _setupAndAdd... ===== | self=%p | controller=%p | class=%@",
         self,
-        className,
+        controller,
         controller
+        ? NSStringFromClass([controller class])
+        : @"<nil>"
     );
 
     @try {
-        SEL identifierSel = sel_registerName("moduleIdentifier");
+        SEL identifierSel =
+            sel_registerName("moduleIdentifier");
 
         if (controller &&
             [controller respondsToSelector:identifierSel]) {
@@ -288,6 +293,10 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
                 @"SETUP/ADD -> moduleIdentifier=%@",
                 identifier
             );
+        } else {
+            HVLog(
+                @"SETUP/ADD -> moduleIdentifier selector unavailable"
+            );
         }
     }
     @catch (NSException *exception) {
@@ -297,33 +306,28 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
         );
     }
 
-    /*
-     * 最重要：
-     * 这里绝对不阻止，不改变返回值。
-     */
     %orig;
 
     HVLog(
-        @"SETUP/ADD -> FINISHED | self=%p | controller=%p",
-        self,
+        @"SETUP/ADD -> FINISHED | controller=%p",
         controller
     );
 }
 
 - (void)_removeAndTearDownModuleViewControllerFromHierarchy:(id)controller
 {
-    NSString *className =
-        controller ? NSStringFromClass([controller class]) : @"<nil>";
-
     HVLog(
-        @"===== CALL _removeAndTearDown... ===== | self=%p | controller=%@ | controller=%p",
+        @"===== CALL _removeAndTearDown... ===== | self=%p | controller=%p | class=%@",
         self,
-        className,
+        controller,
         controller
+        ? NSStringFromClass([controller class])
+        : @"<nil>"
     );
 
     @try {
-        SEL identifierSel = sel_registerName("moduleIdentifier");
+        SEL identifierSel =
+            sel_registerName("moduleIdentifier");
 
         if (controller &&
             [controller respondsToSelector:identifierSel]) {
@@ -338,6 +342,10 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
                 @"REMOVE -> moduleIdentifier=%@",
                 identifier
             );
+        } else {
+            HVLog(
+                @"REMOVE -> moduleIdentifier selector unavailable"
+            );
         }
     }
     @catch (NSException *exception) {
@@ -350,8 +358,7 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
     %orig;
 
     HVLog(
-        @"REMOVE -> FINISHED | self=%p | controller=%p",
-        self,
+        @"REMOVE -> FINISHED | controller=%p",
         controller
     );
 }
@@ -359,23 +366,33 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
 - (id)moduleViewForIdentifier:(id)identifier
 {
     if ([identifier isKindOfClass:[NSString class]]) {
-        HVLog(
-            @"moduleViewForIdentifier -> %@",
-            identifier
-        );
+        NSString *value = (NSString *)identifier;
+
+        if ([value isEqualToString:
+             @"com.apple.replaykit.AudioConferenceControlCenterModule"] ||
+            [value isEqualToString:
+             @"com.apple.replaykit.VideoConferenceControlCenterModule"]) {
+
+            HVLog(
+                @"moduleViewForIdentifier -> REQUEST %@",
+                value
+            );
+        }
     }
 
     id result = %orig;
 
     if ([identifier isKindOfClass:[NSString class]]) {
-        if ([identifier isEqualToString:
+        NSString *value = (NSString *)identifier;
+
+        if ([value isEqualToString:
              @"com.apple.replaykit.AudioConferenceControlCenterModule"] ||
-            [identifier isEqualToString:
+            [value isEqualToString:
              @"com.apple.replaykit.VideoConferenceControlCenterModule"]) {
 
             HVLog(
-                @"moduleViewForIdentifier RESULT -> %@ | result=%p",
-                identifier,
+                @"moduleViewForIdentifier -> RESULT %@ | result=%p",
+                value,
                 result
             );
         }
@@ -410,38 +427,6 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
     );
 
     return result;
-}
-
-%end
-
-%hook CCUIModuleInstance
-
-- (CCUILayoutSize)prototypeModuleSize
-{
-    /*
-     * 这里只观察，不改变尺寸。
-     */
-    if (HVIsRPCCModule(self)) {
-        @try {
-            SEL moduleSel = sel_registerName("module");
-
-            id module =
-                ((id (*)(id, SEL))objc_msgSend)(
-                    self,
-                    moduleSel
-                );
-
-            HVLog(
-                @"prototypeModuleSize -> RPCC | instance=%p | module=%@",
-                self,
-                NSStringFromClass([module class])
-            );
-        }
-        @catch (NSException *exception) {
-        }
-    }
-
-    return %orig;
 }
 
 %end
