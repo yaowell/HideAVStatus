@@ -36,6 +36,18 @@ static BOOL IsRPCCModule(id instance)
     }
 }
 
+static BOOL IsHiddenReplayKitIdentifier(id identifier)
+{
+    if (![identifier isKindOfClass:[NSString class]]) {
+        return NO;
+    }
+
+    NSString *value = (NSString *)identifier;
+
+    return [value isEqualToString:@"com.apple.replaykit.AudioConferenceControlCenterModule"] ||
+           [value isEqualToString:@"com.apple.replaykit.VideoConferenceControlCenterModule"];
+}
+
 static NSArray *FilterRPCCModules(NSArray *original)
 {
     if (![original isKindOfClass:[NSArray class]]) {
@@ -77,22 +89,39 @@ static NSArray *FilterRPCCModules(NSArray *original)
             sel_registerName("_updateEnabledModuleIdentifiers");
 
         if ([obj respondsToSelector:selector]) {
-            ((void (*)(id, SEL))objc_msgSend)(
-                obj,
-                selector
-            );
+            @try {
+                ((void (*)(id, SEL))objc_msgSend)(
+                    obj,
+                    selector
+                );
+            }
+            @catch (NSException *exception) {
+            }
         }
 
         SEL refreshSelector =
             sel_registerName("_refreshModuleViewControllers");
 
         if ([obj respondsToSelector:refreshSelector]) {
-            ((void (*)(id, SEL))objc_msgSend)(
-                obj,
-                refreshSelector
-            );
+            @try {
+                ((void (*)(id, SEL))objc_msgSend)(
+                    obj,
+                    refreshSelector
+                );
+            }
+            @catch (NSException *exception) {
+            }
         }
     }
+}
+
+- (id)moduleViewForIdentifier:(id)identifier
+{
+    if (IsHiddenReplayKitIdentifier(identifier)) {
+        return nil;
+    }
+
+    return %orig;
 }
 
 %end
