@@ -36,18 +36,6 @@ static BOOL IsRPCCModule(id instance)
     }
 }
 
-static BOOL IsHiddenReplayKitIdentifier(id identifier)
-{
-    if (![identifier isKindOfClass:[NSString class]]) {
-        return NO;
-    }
-
-    NSString *value = (NSString *)identifier;
-
-    return [value isEqualToString:@"com.apple.replaykit.AudioConferenceControlCenterModule"] ||
-           [value isEqualToString:@"com.apple.replaykit.VideoConferenceControlCenterModule"];
-}
-
 static NSArray *FilterRPCCModules(NSArray *original)
 {
     if (![original isKindOfClass:[NSArray class]]) {
