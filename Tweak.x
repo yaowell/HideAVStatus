@@ -52,8 +52,7 @@ static BOOL HVIsRPCCModule(id instance)
     }
 
     @try {
-        SEL moduleSel =
-            sel_registerName("module");
+        SEL moduleSel = sel_registerName("module");
 
         if (![instance respondsToSelector:moduleSel]) {
             return NO;
@@ -97,8 +96,7 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
         }
 
         @try {
-            SEL moduleSel =
-                sel_registerName("module");
+            SEL moduleSel = sel_registerName("module");
 
             id module =
                 ((id (*)(id, SEL))objc_msgSend)(
@@ -144,25 +142,6 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
 
 %hook CCUIModuleCollectionViewController
 
-- (id)initWithModuleInstanceManager:(id)manager
-{
-    HVLog(
-        @"===== INIT ===== | self=%p | manager=%p",
-        self,
-        manager
-    );
-
-    id result = %orig;
-
-    HVLog(
-        @"INIT -> AFTER | self=%p | result=%p",
-        self,
-        result
-    );
-
-    return result;
-}
-
 - (void)moduleInstancesChangedForModuleInstanceManager:(id)manager
 {
     HVLog(
@@ -174,102 +153,22 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
     %orig;
 
     HVLog(
-        @"EVENT moduleInstancesChanged -> AFTER | self=%p",
-        self
+        @"EVENT moduleInstancesChanged -> AFTER"
     );
 }
 
-- (void)orderedEnabledModuleIdentifiersChangedForSettingsManager:(id)manager
-{
-    HVLog(
-        @"===== EVENT orderedEnabledModuleIdentifiersChanged ===== | self=%p | manager=%p",
-        self,
-        manager
-    );
-
-    %orig;
-
-    HVLog(
-        @"orderedEnabledModuleIdentifiersChanged -> AFTER"
-    );
-}
-
-- (void)moduleInstancesLayoutChangedForModuleInstanceManager:(id)manager
-{
-    HVLog(
-        @"===== EVENT moduleInstancesLayoutChanged ===== | self=%p | manager=%p",
-        self,
-        manager
-    );
-
-    %orig;
-
-    HVLog(
-        @"moduleInstancesLayoutChanged -> AFTER"
-    );
-}
-
-- (void)_updateEnabledModuleIdentifiers
-{
-    HVLog(
-        @"===== CALL _updateEnabledModuleIdentifiers ===== | self=%p",
-        self
-    );
-
-    %orig;
-
-    HVLog(
-        @"_updateEnabledModuleIdentifiers -> AFTER"
-    );
-}
-
-- (void)_updateModuleControllers
-{
-    HVLog(
-        @"===== CALL _updateModuleControllers ===== | self=%p",
-        self
-    );
-
-    %orig;
-
-    HVLog(
-        @"_updateModuleControllers -> AFTER"
-    );
-}
-
-- (void)_populateModulesIfNecessary
-{
-    HVLog(
-        @"===== CALL _populateModulesIfNecessary ===== | self=%p",
-        self
-    );
-
-    %orig;
-
-    HVLog(
-        @"_populateModulesIfNecessary -> AFTER"
-    );
-}
-
-- (void)_populateModuleViewControllers
-{
-    HVLog(
-        @"===== CALL _populateModuleViewControllers ===== | self=%p",
-        self
-    );
-
-    %orig;
-
-    HVLog(
-        @"_populateModuleViewControllers -> AFTER"
-    );
-}
-
+/*
+ * 这一版唯一新增的观察点。
+ *
+ * 只记录 controller 和 identifier，
+ * 然后正常执行 %orig。
+ *
+ * 不拦截 Video。
+ */
 - (void)_setupAndAddModuleViewControllerToHierarchy:(id)controller
 {
     HVLog(
-        @"===== CALL _setupAndAdd... ===== | self=%p | controller=%p | class=%@",
-        self,
+        @"===== SETUP/ADD ===== | controller=%p | class=%@",
         controller,
         controller
         ? NSStringFromClass([controller class])
@@ -290,12 +189,8 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
                 );
 
             HVLog(
-                @"SETUP/ADD -> moduleIdentifier=%@",
+                @"SETUP/ADD -> identifier=%@",
                 identifier
-            );
-        } else {
-            HVLog(
-                @"SETUP/ADD -> moduleIdentifier selector unavailable"
             );
         }
     }
@@ -310,55 +205,6 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
 
     HVLog(
         @"SETUP/ADD -> FINISHED | controller=%p",
-        controller
-    );
-}
-
-- (void)_removeAndTearDownModuleViewControllerFromHierarchy:(id)controller
-{
-    HVLog(
-        @"===== CALL _removeAndTearDown... ===== | self=%p | controller=%p | class=%@",
-        self,
-        controller,
-        controller
-        ? NSStringFromClass([controller class])
-        : @"<nil>"
-    );
-
-    @try {
-        SEL identifierSel =
-            sel_registerName("moduleIdentifier");
-
-        if (controller &&
-            [controller respondsToSelector:identifierSel]) {
-
-            id identifier =
-                ((id (*)(id, SEL))objc_msgSend)(
-                    controller,
-                    identifierSel
-                );
-
-            HVLog(
-                @"REMOVE -> moduleIdentifier=%@",
-                identifier
-            );
-        } else {
-            HVLog(
-                @"REMOVE -> moduleIdentifier selector unavailable"
-            );
-        }
-    }
-    @catch (NSException *exception) {
-        HVLog(
-            @"REMOVE -> identifier exception=%@",
-            exception
-        );
-    }
-
-    %orig;
-
-    HVLog(
-        @"REMOVE -> FINISHED | controller=%p",
         controller
     );
 }
@@ -435,7 +281,7 @@ static void HVLogModuleArray(NSArray *array, NSString *tag)
 {
     HVLog(@"");
     HVLog(@"========================================");
-    HVLog(@"HideAVProbe START");
+    HVLog(@"HideAVProbe V2 START");
     HVLog(@"PID=%d", getpid());
     HVLog(@"========================================");
 }
