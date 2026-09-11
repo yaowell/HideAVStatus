@@ -8,20 +8,70 @@ typedef struct {
     NSUInteger height;
 } CCUILayoutSize;
 
+static NSString *CHLogPath(void)
+{
+    return @"/var/mobile/Documents/HideAVProbe.log";
+}
+
 static void CHLog(NSString *format, ...)
 {
     va_list args;
     va_start(args, format);
+
     NSString *message =
         [[NSString alloc] initWithFormat:format arguments:args];
+
     va_end(args);
+
+    NSString *line =
+        [NSString stringWithFormat:@"%@ [HideAVProbe] %@\n",
+         [NSDate date],
+         message];
+
+    @try {
+        NSString *path = CHLogPath();
+
+        NSFileManager *fm = [NSFileManager defaultManager];
+
+        NSString *dir = [path stringByDeletingLastPathComponent];
+
+        if (![fm fileExistsAtPath:dir]) {
+            [fm createDirectoryAtPath:dir
+          withIntermediateDirectories:YES
+                           attributes:nil
+                                error:nil];
+        }
+
+        if (![fm fileExistsAtPath:path]) {
+            [line writeToFile:path
+                   atomically:YES
+                     encoding:NSUTF8StringEncoding
+                        error:nil];
+        } else {
+            NSFileHandle *handle =
+                [NSFileHandle fileHandleForWritingAtPath:path];
+
+            if (handle) {
+                [handle seekToEndOfFile];
+
+                [handle writeData:
+                    [line dataUsingEncoding:NSUTF8StringEncoding]];
+
+                [handle closeFile];
+            }
+        }
+    }
+    @catch (NSException *exception) {
+    }
 
     NSLog(@"[HideAVProbe] %@", message);
 }
 
 static BOOL IsRPCCModule(id instance)
 {
-    if (!instance) return NO;
+    if (!instance) {
+        return NO;
+    }
 
     @try {
         SEL moduleSelector =
@@ -37,16 +87,20 @@ static BOOL IsRPCCModule(id instance)
                 moduleSelector
             );
 
-        if (!module) return NO;
+        if (!module) {
+            return NO;
+        }
 
         NSString *name =
             NSStringFromClass([module class]);
 
-        BOOL isRPCC =
-            [name isEqualToString:@"RPCCAudioSettingsModule"] ||
+        BOOL isAudio =
+            [name isEqualToString:@"RPCCAudioSettingsModule"];
+
+        BOOL isVideo =
             [name isEqualToString:@"RPCCVideoSettingsModule"];
 
-        if (isRPCC) {
+        if (isAudio || isVideo) {
             CHLog(
                 @"RPCC INSTANCE -> %@ | instance=%p | module=%@ | module=%p",
                 NSStringFromClass([instance class]),
@@ -56,13 +110,14 @@ static BOOL IsRPCCModule(id instance)
             );
         }
 
-        return isRPCC;
+        return isAudio || isVideo;
     }
     @catch (NSException *exception) {
         CHLog(
             @"IsRPCCModule exception -> %@",
             exception.reason
         );
+
         return NO;
     }
 }
@@ -125,7 +180,7 @@ static NSArray *FilterRPCCModules(NSArray *original)
     return filtered;
 }
 
-#pragma mark - Module Instance Manager Probe
+#pragma mark - Module Instance Manager
 
 %hook CCUIModuleInstanceManager
 
@@ -175,7 +230,6 @@ static NSArray *FilterRPCCModules(NSArray *original)
     }
 
     if (hasAudio || hasVideo) {
-
         CHLog(
             @"moduleInstances -> count=%lu | Audio=%@ | Video=%@",
             (unsigned long)original.count,
@@ -233,7 +287,6 @@ static NSArray *FilterRPCCModules(NSArray *original)
     }
 
     if (hasAudio || hasVideo) {
-
         CHLog(
             @"enabledModuleInstances -> count=%lu | Audio=%@ | Video=%@",
             (unsigned long)original.count,
@@ -271,3 +324,28 @@ static NSArray *FilterRPCCModules(NSArray *original)
 }
 
 %end
+
+#pragma mark - Init
+
+__attribute__((constructor))
+static void CHInit(void)
+{
+    @autoreleasepool {
+
+        CHLog(@"========== HideAVProbe START ==========");
+
+        CHLog(
+            @"Log file -> %@",
+            CHLogPath()
+        );
+
+        CHLog(
+            @"Device -> %@",
+            [[UIDevice currentDevice] systemVersion]
+        );
+
+        CHLog(@"Hooks installed");
+
+        CHLog(@"========== READY ==========");
+    }
+}
