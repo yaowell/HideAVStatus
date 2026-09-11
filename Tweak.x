@@ -72,13 +72,15 @@ static NSArray *FilterRPCCModules(NSArray *original)
 
     if (@available(iOS 17.0, *)) {
 
+        id obj = self;
+
         SEL selector =
             sel_registerName("_updateModuleControllers");
 
-        if ([self respondsToSelector:selector]) {
+        if ([obj respondsToSelector:selector]) {
 
             ((void (*)(id, SEL))objc_msgSend)(
-                self,
+                obj,
                 selector
             );
         }
