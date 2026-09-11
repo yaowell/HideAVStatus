@@ -31,9 +31,11 @@ static void CHLog(NSString *format, ...)
     @try {
         NSString *path = CHLogPath();
 
-        NSFileManager *fm = [NSFileManager defaultManager];
+        NSString *dir =
+            [path stringByDeletingLastPathComponent];
 
-        NSString *dir = [path stringByDeletingLastPathComponent];
+        NSFileManager *fm =
+            [NSFileManager defaultManager];
 
         if (![fm fileExistsAtPath:dir]) {
             [fm createDirectoryAtPath:dir
@@ -43,19 +45,25 @@ static void CHLog(NSString *format, ...)
         }
 
         if (![fm fileExistsAtPath:path]) {
+
             [line writeToFile:path
                    atomically:YES
                      encoding:NSUTF8StringEncoding
                         error:nil];
+
         } else {
+
             NSFileHandle *handle =
                 [NSFileHandle fileHandleForWritingAtPath:path];
 
             if (handle) {
+
                 [handle seekToEndOfFile];
 
-                [handle writeData:
-                    [line dataUsingEncoding:NSUTF8StringEncoding]];
+                NSData *data =
+                    [line dataUsingEncoding:NSUTF8StringEncoding];
+
+                [handle writeData:data];
 
                 [handle closeFile];
             }
@@ -67,59 +75,62 @@ static void CHLog(NSString *format, ...)
     NSLog(@"[HideAVProbe] %@", message);
 }
 
-static BOOL IsRPCCModule(id instance)
+static NSString *CHModuleName(id instance)
 {
     if (!instance) {
-        return NO;
+        return nil;
     }
 
     @try {
-        SEL moduleSelector =
+        SEL selector =
             sel_registerName("module");
 
-        if (![instance respondsToSelector:moduleSelector]) {
-            return NO;
+        if (![instance respondsToSelector:selector]) {
+            return nil;
         }
 
         id module =
             ((id (*)(id, SEL))objc_msgSend)(
                 instance,
-                moduleSelector
+                selector
             );
 
         if (!module) {
-            return NO;
+            return nil;
         }
 
-        NSString *name =
-            NSStringFromClass([module class]);
-
-        BOOL isAudio =
-            [name isEqualToString:@"RPCCAudioSettingsModule"];
-
-        BOOL isVideo =
-            [name isEqualToString:@"RPCCVideoSettingsModule"];
-
-        if (isAudio || isVideo) {
-            CHLog(
-                @"RPCC INSTANCE -> %@ | instance=%p | module=%@ | module=%p",
-                NSStringFromClass([instance class]),
-                instance,
-                name,
-                module
-            );
-        }
-
-        return isAudio || isVideo;
+        return NSStringFromClass([module class]);
     }
     @catch (NSException *exception) {
-        CHLog(
-            @"IsRPCCModule exception -> %@",
-            exception.reason
-        );
+        return nil;
+    }
+}
 
+static BOOL IsRPCCModule(id instance)
+{
+    NSString *name = CHModuleName(instance);
+
+    if (!name) {
         return NO;
     }
+
+    BOOL isAudio =
+        [name isEqualToString:@"RPCCAudioSettingsModule"];
+
+    BOOL isVideo =
+        [name isEqualToString:@"RPCCVideoSettingsModule"];
+
+    if (isAudio || isVideo) {
+
+        CHLog(
+            @"RPCC INSTANCE -> %@ | instance=%p | module=%@",
+            NSStringFromClass([instance class]),
+            instance,
+            name
+        );
+    }
+
+    return isAudio || isVideo;
 }
 
 static NSArray *FilterRPCCModules(NSArray *original)
@@ -136,31 +147,16 @@ static NSArray *FilterRPCCModules(NSArray *original)
 
     for (id instance in original) {
 
-        if (IsRPCCModule(instance)) {
+        NSString *name =
+            CHModuleName(instance);
 
-            @try {
-                id module =
-                    ((id (*)(id, SEL))objc_msgSend)(
-                        instance,
-                        sel_registerName("module")
-                    );
+        if ([name isEqualToString:@"RPCCAudioSettingsModule"]) {
+            audioCount++;
+            continue;
+        }
 
-                NSString *name =
-                    module ?
-                    NSStringFromClass([module class]) :
-                    @"<nil>";
-
-                if ([name isEqualToString:@"RPCCAudioSettingsModule"]) {
-                    audioCount++;
-                }
-
-                if ([name isEqualToString:@"RPCCVideoSettingsModule"]) {
-                    videoCount++;
-                }
-            }
-            @catch (NSException *exception) {
-            }
-
+        if ([name isEqualToString:@"RPCCVideoSettingsModule"]) {
+            videoCount++;
             continue;
         }
 
@@ -168,6 +164,7 @@ static NSArray *FilterRPCCModules(NSArray *original)
     }
 
     if (audioCount || videoCount) {
+
         CHLog(
             @"FILTER -> original=%lu | audio=%lu | video=%lu | returned=%lu",
             (unsigned long)original.count,
@@ -195,41 +192,21 @@ static NSArray *FilterRPCCModules(NSArray *original)
 
         for (id instance in original) {
 
-            @try {
-                SEL moduleSelector =
-                    sel_registerName("module");
+            NSString *name =
+                CHModuleName(instance);
 
-                if (![instance respondsToSelector:moduleSelector]) {
-                    continue;
-                }
-
-                id module =
-                    ((id (*)(id, SEL))objc_msgSend)(
-                        instance,
-                        moduleSelector
-                    );
-
-                if (!module) {
-                    continue;
-                }
-
-                NSString *name =
-                    NSStringFromClass([module class]);
-
-                if ([name isEqualToString:@"RPCCAudioSettingsModule"]) {
-                    hasAudio = YES;
-                }
-
-                if ([name isEqualToString:@"RPCCVideoSettingsModule"]) {
-                    hasVideo = YES;
-                }
+            if ([name isEqualToString:@"RPCCAudioSettingsModule"]) {
+                hasAudio = YES;
             }
-            @catch (NSException *exception) {
+
+            if ([name isEqualToString:@"RPCCVideoSettingsModule"]) {
+                hasVideo = YES;
             }
         }
     }
 
     if (hasAudio || hasVideo) {
+
         CHLog(
             @"moduleInstances -> count=%lu | Audio=%@ | Video=%@",
             (unsigned long)original.count,
@@ -252,41 +229,21 @@ static NSArray *FilterRPCCModules(NSArray *original)
 
         for (id instance in original) {
 
-            @try {
-                SEL moduleSelector =
-                    sel_registerName("module");
+            NSString *name =
+                CHModuleName(instance);
 
-                if (![instance respondsToSelector:moduleSelector]) {
-                    continue;
-                }
-
-                id module =
-                    ((id (*)(id, SEL))objc_msgSend)(
-                        instance,
-                        moduleSelector
-                    );
-
-                if (!module) {
-                    continue;
-                }
-
-                NSString *name =
-                    NSStringFromClass([module class]);
-
-                if ([name isEqualToString:@"RPCCAudioSettingsModule"]) {
-                    hasAudio = YES;
-                }
-
-                if ([name isEqualToString:@"RPCCVideoSettingsModule"]) {
-                    hasVideo = YES;
-                }
+            if ([name isEqualToString:@"RPCCAudioSettingsModule"]) {
+                hasAudio = YES;
             }
-            @catch (NSException *exception) {
+
+            if ([name isEqualToString:@"RPCCVideoSettingsModule"]) {
+                hasVideo = YES;
             }
         }
     }
 
     if (hasAudio || hasVideo) {
+
         CHLog(
             @"enabledModuleInstances -> count=%lu | Audio=%@ | Video=%@",
             (unsigned long)original.count,
@@ -300,7 +257,7 @@ static NSArray *FilterRPCCModules(NSArray *original)
 
 %end
 
-#pragma mark - Module Instance
+#pragma mark - Module Instance Size
 
 %hook CCUIModuleInstance
 
@@ -309,8 +266,9 @@ static NSArray *FilterRPCCModules(NSArray *original)
     if (IsRPCCModule(self)) {
 
         CHLog(
-            @"prototypeModuleSize -> HIDDEN | instance=%p",
-            self
+            @"prototypeModuleSize -> HIDDEN | instance=%p | module=%@",
+            self,
+            CHModuleName(self)
         );
 
         CCUILayoutSize zeroSize;
@@ -325,6 +283,100 @@ static NSArray *FilterRPCCModules(NSArray *original)
 
 %end
 
+#pragma mark - Collection View Controller Probe
+
+%hook CCUIModuleCollectionViewController
+
+- (void)_setupAndAddModuleViewControllerToHierarchy:(id)moduleViewController
+{
+    id controller = moduleViewController;
+
+    NSString *controllerClass =
+        controller ?
+        NSStringFromClass([controller class]) :
+        @"<nil>";
+
+    CHLog(
+        @"SETUP/ADD -> controller=%@ | controller=%p",
+        controllerClass,
+        controller
+    );
+
+    @try {
+
+        id module = nil;
+
+        SEL moduleSelector =
+            sel_registerName("module");
+
+        if ([controller respondsToSelector:moduleSelector]) {
+
+            module =
+                ((id (*)(id, SEL))objc_msgSend)(
+                    controller,
+                    moduleSelector
+                );
+        }
+
+        if (module) {
+
+            NSString *moduleClass =
+                NSStringFromClass([module class]);
+
+            CHLog(
+                @"SETUP/ADD -> module=%@ | module=%p",
+                moduleClass,
+                module
+            );
+
+            if ([moduleClass isEqualToString:@"RPCCAudioSettingsModule"]) {
+
+                CHLog(
+                    @"SETUP/ADD -> *** RPCC AUDIO DETECTED ***"
+                );
+            }
+
+            if ([moduleClass isEqualToString:@"RPCCVideoSettingsModule"]) {
+
+                CHLog(
+                    @"SETUP/ADD -> *** RPCC VIDEO DETECTED ***"
+                );
+            }
+        }
+
+        SEL identifierSelector =
+            sel_registerName("moduleIdentifier");
+
+        if ([controller respondsToSelector:identifierSelector]) {
+
+            id identifier =
+                ((id (*)(id, SEL))objc_msgSend)(
+                    controller,
+                    identifierSelector
+                );
+
+            if (identifier) {
+
+                CHLog(
+                    @"SETUP/ADD -> identifier=%@",
+                    identifier
+                );
+            }
+        }
+    }
+    @catch (NSException *exception) {
+
+        CHLog(
+            @"SETUP/ADD exception -> %@",
+            exception.reason
+        );
+    }
+
+    %orig;
+}
+
+%end
+
 #pragma mark - Init
 
 __attribute__((constructor))
@@ -332,7 +384,9 @@ static void CHInit(void)
 {
     @autoreleasepool {
 
-        CHLog(@"========== HideAVProbe START ==========");
+        CHLog(
+            @"========== HideAVProbe START =========="
+        );
 
         CHLog(
             @"Log file -> %@",
@@ -344,8 +398,16 @@ static void CHInit(void)
             [[UIDevice currentDevice] systemVersion]
         );
 
-        CHLog(@"Hooks installed");
+        CHLog(
+            @"Hooks installed"
+        );
 
-        CHLog(@"========== READY ==========");
+        CHLog(
+            @"Probe target -> _setupAndAddModuleViewControllerToHierarchy:"
+        );
+
+        CHLog(
+            @"========== READY =========="
+        );
     }
 }
