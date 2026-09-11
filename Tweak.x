@@ -7,17 +7,22 @@ typedef struct {
     NSUInteger height;
 } CCUILayoutSize;
 
-static __weak id gModuleCollectionViewController = nil;
-
 static BOOL IsRPCCModule(id instance)
 {
     if (!instance) return NO;
 
     @try {
-        id module = ((id (*)(id, SEL))objc_msgSend)(
-            instance,
-            sel_registerName("module")
-        );
+        SEL moduleSel = sel_registerName("module");
+
+        if (![instance respondsToSelector:moduleSel]) {
+            return NO;
+        }
+
+        id module =
+            ((id (*)(id, SEL))objc_msgSend)(
+                instance,
+                moduleSel
+            );
 
         if (!module) return NO;
 
@@ -70,11 +75,6 @@ static NSArray *FilterRPCCModules(NSArray *original)
 - (id)initWithModuleInstanceManager:(id)manager
 {
     id result = %orig;
-
-    if (result) {
-        gModuleCollectionViewController = result;
-    }
-
     return result;
 }
 
@@ -86,7 +86,7 @@ static NSArray *FilterRPCCModules(NSArray *original)
         id obj = self;
 
         SEL selector =
-            sel_registerName("_updateModuleControllers");
+            sel_registerName("_updateEnabledModuleIdentifiers");
 
         if ([obj respondsToSelector:selector]) {
             ((void (*)(id, SEL))objc_msgSend)(
@@ -94,35 +94,17 @@ static NSArray *FilterRPCCModules(NSArray *original)
                 selector
             );
         }
-    }
-}
 
-- (void)_setupAndAddModuleViewControllerToHierarchy:(id)moduleViewController
-{
-    id controller = moduleViewController;
+        SEL refreshSelector =
+            sel_registerName("_refreshModuleViewControllers");
 
-    @try {
-        SEL identifierSelector =
-            sel_registerName("moduleIdentifier");
-
-        if (controller &&
-            [controller respondsToSelector:identifierSelector]) {
-
-            id identifier =
-                ((id (*)(id, SEL))objc_msgSend)(
-                    controller,
-                    identifierSelector
-                );
-
-            if (IsHiddenReplayKitIdentifier(identifier)) {
-                return;
-            }
+        if ([obj respondsToSelector:refreshSelector]) {
+            ((void (*)(id, SEL))objc_msgSend)(
+                obj,
+                refreshSelector
+            );
         }
     }
-    @catch (NSException *exception) {
-    }
-
-    %orig;
 }
 
 %end
@@ -154,11 +136,9 @@ static NSArray *FilterRPCCModules(NSArray *original)
 - (CCUILayoutSize)prototypeModuleSize
 {
     if (IsRPCCModule(self)) {
-
         CCUILayoutSize zeroSize;
         zeroSize.width = 0;
         zeroSize.height = 0;
-
         return zeroSize;
     }
 
