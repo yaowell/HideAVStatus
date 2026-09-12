@@ -15,4 +15,8 @@
     self.hidden = YES;
 }
 
+- (void)setHidden:(BOOL)hidden {
+    %orig(YES);
+}
+
 %end
