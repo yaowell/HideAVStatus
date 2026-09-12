@@ -54,6 +54,9 @@ static void HAPLog(NSString *format, ...)
     }
 }
 
+@interface CCUISensorAttributionCompactControl : UIView
+@end
+
 static void HAPDumpState(UIView *view, NSString *event)
 {
     @autoreleasepool {
@@ -90,33 +93,21 @@ static void HAPDumpState(UIView *view, NSString *event)
 - (void)didMoveToSuperview {
     %orig;
 
-    HAPDumpState(
-        self,
-        @"didMoveToSuperview"
-    );
+    HAPDumpState(self, @"didMoveToSuperview");
 }
 
 - (void)didMoveToWindow {
     %orig;
 
-    HAPDumpState(
-        self,
-        @"didMoveToWindow"
-    );
+    HAPDumpState(self, @"didMoveToWindow");
 }
 
 - (void)removeFromSuperview {
-    HAPDumpState(
-        self,
-        @"removeFromSuperview BEFORE"
-    );
+    HAPDumpState(self, @"removeFromSuperview BEFORE");
 
     %orig;
 
-    HAPDumpState(
-        self,
-        @"removeFromSuperview AFTER"
-    );
+    HAPDumpState(self, @"removeFromSuperview AFTER");
 }
 
 - (void)setFrame:(CGRect)frame {
