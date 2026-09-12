@@ -1,96 +1,86 @@
 #import <UIKit/UIKit.h>
-#import <objc/runtime.h>
-#import <objc/message.h>
 
-typedef struct {
-    NSUInteger width;
-    NSUInteger height;
-} CCUILayoutSize;
+static NSString * const kHideAVProbeLog =
+    @"/var/mobile/Documents/HideAVProbe.log";
 
-static BOOL IsRPCCModule(id instance) {
-    if (!instance) return NO;
+static void HAPLog(NSString *format, ...)
+{
+    @autoreleasepool {
+        va_list args;
+        va_start(args, format);
 
-    @try {
-        id module = ((id (*)(id, SEL))objc_msgSend)(
-            instance,
-            sel_registerName("module")
-        );
+        NSString *message =
+            [[NSString alloc] initWithFormat:format arguments:args];
 
-        if (!module) return NO;
+        va_end(args);
 
-        NSString *name = NSStringFromClass([module class]);
+        NSString *line =
+            [NSString stringWithFormat:@"%@\n", message];
 
-        return [name isEqualToString:@"RPCCAudioSettingsModule"] ||
-               [name isEqualToString:@"RPCCVideoSettingsModule"] ||
-               [name isEqualToString:@"RPVideoEffectsModule"];
-    } @catch (NSException *exception) {
-        return NO;
-    }
-}
+        @synchronized (kHideAVProbeLog) {
+            NSFileManager *fm = [NSFileManager defaultManager];
 
-static NSArray *FilterRPCCModules(NSArray *original) {
-    if (![original isKindOfClass:[NSArray class]]) {
-        return original;
-    }
+            NSString *directory =
+                [kHideAVProbeLog stringByDeletingLastPathComponent];
 
-    NSMutableArray *filtered =
-        [NSMutableArray arrayWithCapacity:original.count];
+            if (![fm fileExistsAtPath:directory]) {
+                [fm createDirectoryAtPath:directory
+               withIntermediateDirectories:YES
+                                attributes:nil
+                                     error:nil];
+            }
 
-    for (id instance in original) {
-        if (IsRPCCModule(instance)) {
-            continue;
+            if (![fm fileExistsAtPath:kHideAVProbeLog]) {
+                [line writeToFile:kHideAVProbeLog
+                       atomically:YES
+                         encoding:NSUTF8StringEncoding
+                            error:nil];
+            } else {
+                NSFileHandle *handle =
+                    [NSFileHandle fileHandleForWritingAtPath:kHideAVProbeLog];
+
+                if (handle) {
+                    [handle seekToEndOfFile];
+
+                    NSData *data =
+                        [line dataUsingEncoding:NSUTF8StringEncoding];
+
+                    [handle writeData:data];
+                    [handle closeFile];
+                }
+            }
         }
-
-        [filtered addObject:instance];
     }
-
-    return filtered;
 }
-
-%hook CCUIModuleInstanceManager
-
-- (NSArray *)moduleInstances {
-    NSArray *original = %orig;
-    return FilterRPCCModules(original);
-}
-
-- (NSArray *)enabledModuleInstances {
-    NSArray *original = %orig;
-    return FilterRPCCModules(original);
-}
-
-%end
-
-%hook CCUIModuleInstance
-
-- (CCUILayoutSize)prototypeModuleSize {
-    if (IsRPCCModule(self)) {
-        CCUILayoutSize zeroSize;
-        zeroSize.width = 0;
-        zeroSize.height = 0;
-        return zeroSize;
-    }
-
-    return %orig;
-}
-
-%end
 
 @interface CCUIHeaderPocketView : UIView
 @end
 
 %hook CCUIHeaderPocketView
 
-- (void)didMoveToWindow {
-    %orig;
-
-    self.hidden = YES;
-}
-
 - (void)layoutSubviews {
     %orig;
 
-    self.hidden = YES;
+    @autoreleasepool {
+        NSArray *subviews = self.subviews;
+
+        HAPLog(@"==============================");
+        HAPLog(@"CCUIHeaderPocketView subviews=%lu",
+               (unsigned long)subviews.count);
+
+        for (NSUInteger i = 0; i < subviews.count; i++) {
+            UIView *view = subviews[i];
+
+            HAPLog(@"[%lu] class=%@ | frame=%@ | hidden=%@ | alpha=%.2f",
+                   (unsigned long)i,
+                   NSStringFromClass([view class]),
+                   NSStringFromCGRect(view.frame),
+                   view.hidden ? @"YES" : @"NO",
+                   view.alpha);
+        }
+
+        HAPLog(@"==============================");
+    }
 }
 
 %end
