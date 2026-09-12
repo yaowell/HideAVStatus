@@ -1,27 +1,16 @@
 #import <UIKit/UIKit.h>
 
-%hook CCUIHeaderViewController
+@interface CCUIHeaderPocketView : UIView
+@end
 
-- (void)viewDidLoad {
-    %orig;
+%hook CCUIHeaderPocketView
 
-    UIViewController *vc = (UIViewController *)self;
-    UIView *headerView = vc.view;
-
-    if (headerView) {
-        headerView.hidden = YES;
-    }
+- (void)setHidden:(BOOL)hidden {
+    %orig(YES);
 }
 
-- (void)viewWillLayoutSubviews {
-    %orig;
-
-    UIViewController *vc = (UIViewController *)self;
-    UIView *headerView = vc.view;
-
-    if (headerView) {
-        headerView.hidden = YES;
-    }
+- (void)setAlpha:(CGFloat)alpha {
+    %orig(0.0);
 }
 
 %end
