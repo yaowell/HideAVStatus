@@ -7,6 +7,35 @@ typedef struct {
     NSUInteger height;
 } CCUILayoutSize;
 
+static void RPCCWriteLog(NSString *format, ...) {
+    va_list args;
+    va_start(args, format);
+    NSString *text = [[NSString alloc] initWithFormat:format arguments:args];
+    va_end(args);
+
+    NSString *path = @"/var/mobile/Documents/RPCCProbe.log";
+
+    @try {
+        NSString *line = [text stringByAppendingString:@"\n"];
+        NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
+
+        if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+            [data writeToFile:path atomically:YES];
+            return;
+        }
+
+        NSFileHandle *handle =
+            [NSFileHandle fileHandleForWritingAtPath:path];
+
+        if (!handle) return;
+
+        [handle seekToEndOfFile];
+        [handle writeData:data];
+        [handle closeFile];
+    } @catch (NSException *exception) {
+    }
+}
+
 static BOOL IsRPCCModule(id instance) {
     if (!instance) return NO;
 
@@ -38,7 +67,8 @@ static NSString *RPCCModuleClassName(id instance) {
 
         if (!module) return @"<nil-module>";
 
-        return NSStringFromClass([module class]) ?: @"<unknown>";
+        NSString *name = NSStringFromClass([module class]);
+        return name ?: @"<unknown>";
     } @catch (NSException *exception) {
         return @"<exception>";
     }
@@ -49,9 +79,9 @@ static NSArray *FilterRPCCModules(NSArray *original) {
         return original;
     }
 
-    NSLog(@"==============================");
-    NSLog(@"RPCC PROBE moduleInstances count=%lu",
-          (unsigned long)original.count);
+    RPCCWriteLog(@"==============================");
+    RPCCWriteLog(@"RPCC PROBE count=%lu",
+                 (unsigned long)original.count);
 
     NSUInteger audioCount = 0;
     NSUInteger videoCount = 0;
@@ -74,17 +104,17 @@ static NSArray *FilterRPCCModules(NSArray *original) {
         if (isAudio) audioCount++;
         if (isVideo) videoCount++;
 
-        NSLog(@"[%lu] instance=%@ | module=%@ | Audio=%@ | Video=%@",
-              (unsigned long)i,
-              instanceClass,
-              moduleClass,
-              isAudio ? @"YES" : @"NO",
-              isVideo ? @"YES" : @"NO");
+        RPCCWriteLog(@"[%lu] instance=%@ | module=%@ | Audio=%@ | Video=%@",
+                     (unsigned long)i,
+                     instanceClass,
+                     moduleClass,
+                     isAudio ? @"YES" : @"NO",
+                     isVideo ? @"YES" : @"NO");
     }
 
-    NSLog(@"RPCC PROBE result: Audio=%lu | Video=%lu",
-          (unsigned long)audioCount,
-          (unsigned long)videoCount);
+    RPCCWriteLog(@"RESULT Audio=%lu | Video=%lu",
+                 (unsigned long)audioCount,
+                 (unsigned long)videoCount);
 
     NSMutableArray *filtered =
         [NSMutableArray arrayWithCapacity:original.count];
@@ -97,9 +127,9 @@ static NSArray *FilterRPCCModules(NSArray *original) {
         [filtered addObject:instance];
     }
 
-    NSLog(@"RPCC PROBE filtered count=%lu",
-          (unsigned long)filtered.count);
-    NSLog(@"==============================");
+    RPCCWriteLog(@"filtered count=%lu",
+                 (unsigned long)filtered.count);
+    RPCCWriteLog(@"==============================");
 
     return filtered;
 }
