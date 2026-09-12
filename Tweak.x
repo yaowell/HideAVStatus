@@ -5,12 +5,16 @@
 
 %hook CCUIHeaderPocketView
 
-- (void)setHidden:(BOOL)hidden {
-    %orig(YES);
+- (void)didMoveToWindow {
+    %orig;
+
+    self.hidden = YES;
 }
 
-- (void)setAlpha:(CGFloat)alpha {
-    %orig(0.0);
+- (void)layoutSubviews {
+    %orig;
+
+    self.hidden = YES;
 }
 
 %end
