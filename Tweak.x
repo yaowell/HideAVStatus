@@ -25,4 +25,9 @@
     %orig(NO);
 }
 
+- (void)setFrame:(CGRect)frame {
+    frame.size.height = 0.0;
+    %orig(frame);
+}
+
 %end
