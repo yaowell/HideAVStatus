@@ -5,16 +5,18 @@
 - (void)viewDidLoad {
     %orig;
 
-    if (self.view) {
-        self.view.hidden = YES;
+    UIView *headerView = [self view];
+    if (headerView) {
+        [headerView setHidden:YES];
     }
 }
 
 - (void)viewWillLayoutSubviews {
     %orig;
 
-    if (self.view) {
-        self.view.hidden = YES;
+    UIView *headerView = [self view];
+    if (headerView) {
+        [headerView setHidden:YES];
     }
 }
 
