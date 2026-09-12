@@ -76,6 +76,9 @@ static NSArray *FilterRPCCModules(NSArray *original) {
 
 %end
 
+@interface CCUISensorAttributionCompactControl : UIView
+@end
+
 %hook CCUISensorAttributionCompactControl
 
 - (void)didMoveToWindow {
