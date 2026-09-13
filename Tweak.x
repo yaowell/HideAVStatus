@@ -7,8 +7,17 @@ typedef struct {
     NSUInteger height;
 } CCUILayoutSize;
 
+
+/*
+ * ============================================================
+ * RPCC module detection
+ * ============================================================
+ */
+
 static BOOL IsRPCCModule(id instance) {
-    if (!instance) return NO;
+    if (!instance) {
+        return NO;
+    }
 
     @try {
         id module = ((id (*)(id, SEL))objc_msgSend)(
@@ -16,7 +25,9 @@ static BOOL IsRPCCModule(id instance) {
             sel_registerName("module")
         );
 
-        if (!module) return NO;
+        if (!module) {
+            return NO;
+        }
 
         NSString *name = NSStringFromClass([module class]);
 
@@ -29,6 +40,13 @@ static BOOL IsRPCCModule(id instance) {
     }
 }
 
+
+/*
+ * ============================================================
+ * Filter RPCC modules
+ * ============================================================
+ */
+
 static NSArray *FilterRPCCModules(NSArray *original) {
     if (![original isKindOfClass:[NSArray class]]) {
         return original;
@@ -38,6 +56,7 @@ static NSArray *FilterRPCCModules(NSArray *original) {
         [NSMutableArray arrayWithCapacity:original.count];
 
     for (id instance in original) {
+
         if (IsRPCCModule(instance)) {
             continue;
         }
@@ -47,6 +66,18 @@ static NSArray *FilterRPCCModules(NSArray *original) {
 
     return filtered;
 }
+
+
+/*
+ * ============================================================
+ * CCUIModuleInstanceManager
+ *
+ * Hide:
+ *   RPCCAudioSettingsModule
+ *   RPCCVideoSettingsModule
+ *   RPVideoEffectsModule
+ * ============================================================
+ */
 
 %hook CCUIModuleInstanceManager
 
@@ -62,13 +93,25 @@ static NSArray *FilterRPCCModules(NSArray *original) {
 
 %end
 
+
+/*
+ * ============================================================
+ * CCUIModuleInstance
+ *
+ * Make the RPCC modules occupy zero size.
+ * ============================================================
+ */
+
 %hook CCUIModuleInstance
 
 - (CCUILayoutSize)prototypeModuleSize {
+
     if (IsRPCCModule(self)) {
+
         CCUILayoutSize zeroSize;
         zeroSize.width = 0;
         zeroSize.height = 0;
+
         return zeroSize;
     }
 
@@ -77,29 +120,44 @@ static NSArray *FilterRPCCModules(NSArray *original) {
 
 %end
 
+
+/*
+ * ============================================================
+ * CCUISensorAttributionCompactControl
+ *
+ * New test:
+ *
+ * DO NOT use hidden = YES.
+ *
+ * Keep the view in the layout hierarchy so its original
+ * height/space remains intact.
+ *
+ * Make it completely transparent and disable its own
+ * interaction so it should not open the secondary menu.
+ * ============================================================
+ */
+
 @interface CCUISensorAttributionCompactControl : UIView
 @end
 
 %hook CCUISensorAttributionCompactControl
 
 - (void)didMoveToWindow {
+
     %orig;
-    self.hidden = YES;
-    self.userInteractionEnabled = YES;
+
+    self.hidden = NO;
+    self.alpha = 0.0;
+    self.userInteractionEnabled = NO;
 }
 
 - (void)layoutSubviews {
+
     %orig;
-    self.hidden = YES;
-    self.userInteractionEnabled = YES;
-}
 
-- (void)setHidden:(BOOL)hidden {
-    %orig(YES);
-}
-
-- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
-    return NO;
+    self.hidden = NO;
+    self.alpha = 0.0;
+    self.userInteractionEnabled = NO;
 }
 
 %end
