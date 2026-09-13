@@ -2,9 +2,9 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
-#pragma mark - File Logger
+#pragma mark - Logger
 
-static void SensorProbeLog(NSString *format, ...) {
+static void ProbeLog(NSString *format, ...) {
     @autoreleasepool {
 
         NSString *path =
@@ -21,7 +21,8 @@ static void SensorProbeLog(NSString *format, ...) {
         NSString *line =
             [NSString stringWithFormat:@"%@\n", message];
 
-        NSFileManager *fm = [NSFileManager defaultManager];
+        NSFileManager *fm =
+            [NSFileManager defaultManager];
 
         if (![fm fileExistsAtPath:path]) {
             [fm createFileAtPath:path
@@ -43,6 +44,7 @@ static void SensorProbeLog(NSString *format, ...) {
                 [line dataUsingEncoding:NSUTF8StringEncoding];
 
             [handle writeData:data];
+
             [handle closeFile];
         }
         @catch (NSException *exception) {
@@ -56,9 +58,9 @@ static void SensorProbeLog(NSString *format, ...) {
 }
 
 
-#pragma mark - Safe Description
+#pragma mark - Safe Helpers
 
-static NSString *SafeClassName(id obj) {
+static NSString *ClassName(id obj) {
     if (!obj) {
         return @"<nil>";
     }
@@ -67,77 +69,127 @@ static NSString *SafeClassName(id obj) {
 }
 
 
-static NSString *SafeFrameString(UIView *view) {
+static NSString *FrameString(UIView *view) {
+
     if (!view) {
         return @"<nil>";
     }
 
-    CGRect frame = view.frame;
+    CGRect f = view.frame;
 
     return [NSString stringWithFormat:
             @"{{%.1f, %.1f}, {%.1f, %.1f}}",
-            frame.origin.x,
-            frame.origin.y,
-            frame.size.width,
-            frame.size.height];
+            f.origin.x,
+            f.origin.y,
+            f.size.width,
+            f.size.height];
 }
 
 
-static NSString *SafeBoundsString(UIView *view) {
-    if (!view) {
-        return @"<nil>";
-    }
+#pragma mark - Dump Header Subviews
 
-    CGRect bounds = view.bounds;
+static void DumpHeaderSubviews(UIView *header) {
 
-    return [NSString stringWithFormat:
-            @"{{%.1f, %.1f}, {%.1f, %.1f}}",
-            bounds.origin.x,
-            bounds.origin.y,
-            bounds.size.width,
-            bounds.size.height];
-}
-
-
-#pragma mark - View Hierarchy
-
-static void DumpSensorHierarchy(UIView *view) {
-
-    if (!view) {
-        SensorProbeLog(@"[Hierarchy] view=nil");
+    if (!header) {
         return;
     }
 
-    SensorProbeLog(@"========== SENSOR HIERARCHY ==========");
+    ProbeLog(@"");
+    ProbeLog(@"========== HEADER SUBVIEWS ==========");
 
-    UIView *current = view;
-    NSInteger level = 0;
+    NSArray *subviews = header.subviews;
 
-    while (current && level < 12) {
+    ProbeLog(
+        @"[HEADER] class=%@ count=%lu frame=%@",
+        ClassName(header),
+        (unsigned long)subviews.count,
+        FrameString(header)
+    );
 
-        UIView *superview = current.superview;
+    NSUInteger index = 0;
 
-        SensorProbeLog(
-            @"[Hierarchy] level=%ld class=%@ frame=%@ bounds=%@ hidden=%d alpha=%.2f userInteraction=%d super=%@",
-            (long)level,
-            SafeClassName(current),
-            SafeFrameString(current),
-            SafeBoundsString(current),
-            current.hidden,
-            current.alpha,
-            current.userInteractionEnabled,
-            SafeClassName(superview)
+    for (UIView *view in subviews) {
+
+        ProbeLog(
+            @"[HEADER-SUBVIEW] index=%lu class=%@ frame=%@ hidden=%d alpha=%.2f interaction=%d",
+            (unsigned long)index,
+            ClassName(view),
+            FrameString(view),
+            view.hidden,
+            view.alpha,
+            view.userInteractionEnabled
         );
 
-        current = superview;
-        level++;
+        index++;
     }
 
-    SensorProbeLog(@"========== END HIERARCHY ==========");
+    ProbeLog(@"========== END HEADER SUBVIEWS ==========");
 }
 
 
-#pragma mark - Sensor Attribution Control
+#pragma mark - Method Name Scanner
+
+static void DumpInterestingMethods(Class cls) {
+
+    if (!cls) {
+        return;
+    }
+
+    ProbeLog(@"");
+    ProbeLog(@"========== METHODS %@ ==========",
+             NSStringFromClass(cls));
+
+    unsigned int count = 0;
+
+    Method *methods =
+        class_copyMethodList(cls, &count);
+
+    if (!methods) {
+        ProbeLog(@"[METHODS] no methods");
+        return;
+    }
+
+    for (unsigned int i = 0; i < count; i++) {
+
+        SEL selector =
+            method_getName(methods[i]);
+
+        if (!selector) {
+            continue;
+        }
+
+        NSString *name =
+            NSStringFromSelector(selector);
+
+        NSString *lower =
+            [name lowercaseString];
+
+        BOOL interesting =
+            [lower containsString:@"sensor"] ||
+            [lower containsString:@"attribution"] ||
+            [lower containsString:@"compact"] ||
+            [lower containsString:@"expand"] ||
+            [lower containsString:@"header"] ||
+            [lower containsString:@"pocket"] ||
+            [lower containsString:@"camera"] ||
+            [lower containsString:@"microphone"];
+
+        if (interesting) {
+
+            ProbeLog(
+                @"[METHOD] %@",
+                name
+            );
+        }
+    }
+
+    free(methods);
+
+    ProbeLog(@"========== END METHODS ==========");
+}
+
+
+#pragma mark - Sensor Control
 
 @interface CCUISensorAttributionCompactControl : UIView
 @end
@@ -146,222 +198,177 @@ static void DumpSensorHierarchy(UIView *view) {
 %hook CCUISensorAttributionCompactControl
 
 
-/*
- * ============================================================
- * initWithFrame
- * ============================================================
- */
-
 - (instancetype)initWithFrame:(CGRect)frame {
 
-    SensorProbeLog(
-        @"[CREATE] initWithFrame ENTER frame={{%.1f, %.1f}, {%.1f, %.1f}}",
-        frame.origin.x,
-        frame.origin.y,
-        frame.size.width,
-        frame.size.height
+    ProbeLog(
+        @"[SENSOR-CREATE] initWithFrame self=%p frame=%@",
+        self,
+        FrameString((UIView *)self)
     );
 
     id result = %orig;
 
-    SensorProbeLog(
-        @"[CREATE] initWithFrame EXIT self=%p class=%@ frame=%@ bounds=%@",
-        self,
-        SafeClassName(result),
-        SafeFrameString(result),
-        SafeBoundsString(result)
+    ProbeLog(
+        @"[SENSOR-CREATE] result=%p class=%@ frame=%@",
+        result,
+        ClassName(result),
+        FrameString((UIView *)result)
     );
 
     return result;
 }
 
 
-/*
- * ============================================================
- * didMoveToWindow
- * ============================================================
- */
+- (void)didMoveToWindow {
+
+    %orig;
+
+    ProbeLog(
+        @"[SENSOR-WINDOW] self=%p window=%@ super=%@ frame=%@",
+        self,
+        ClassName(self.window),
+        ClassName(self.superview),
+        FrameString(self)
+    );
+
+    if (self.superview) {
+        DumpHeaderSubviews(self.superview);
+    }
+}
+
+
+- (void)layoutSubviews {
+
+    %orig;
+
+    if (self.superview) {
+        DumpHeaderSubviews(self.superview);
+    }
+}
+
+%end
+
+
+#pragma mark - Header Pocket
+
+@interface CCUIHeaderPocketView : UIView
+@end
+
+
+%hook CCUIHeaderPocketView
+
+
+- (instancetype)initWithFrame:(CGRect)frame {
+
+    ProbeLog(
+        @"[HEADER-CREATE] initWithFrame frame=%@",
+        FrameString((UIView *)self)
+    );
+
+    id result = %orig;
+
+    ProbeLog(
+        @"[HEADER-CREATE] result=%p class=%@ frame=%@",
+        result,
+        ClassName(result),
+        FrameString((UIView *)result)
+    );
+
+    /*
+     * 只扫描一次方法。
+     */
+    static BOOL didDumpMethods = NO;
+
+    if (!didDumpMethods) {
+
+        didDumpMethods = YES;
+
+        DumpInterestingMethods(
+            [result class]
+        );
+    }
+
+    return result;
+}
+
 
 - (void)didMoveToWindow {
 
     %orig;
 
-    SensorProbeLog(
-        @"[WINDOW] didMoveToWindow self=%p window=%@ frame=%@ hidden=%d alpha=%.2f",
+    ProbeLog(
+        @"[HEADER-WINDOW] self=%p window=%@ frame=%@",
         self,
-        SafeClassName(self.window),
-        SafeFrameString(self),
-        self.hidden,
-        self.alpha
+        ClassName(self.window),
+        FrameString(self)
     );
 
-    DumpSensorHierarchy(self);
+    DumpHeaderSubviews(self);
 }
 
-
-/*
- * ============================================================
- * layoutSubviews
- * ============================================================
- */
 
 - (void)layoutSubviews {
 
-    CGRect beforeFrame = self.frame;
-    CGRect beforeBounds = self.bounds;
+    CGRect before =
+        self.frame;
 
     %orig;
 
-    SensorProbeLog(
-        @"[LAYOUT] self=%p BEFORE frame=%@ bounds=%@",
+    CGRect after =
+        self.frame;
+
+    ProbeLog(
+        @"[HEADER-LAYOUT] self=%p before=%@ after=%@ subviews=%lu",
         self,
-        SafeFrameString(self),
-        SafeBoundsString(self)
+        FrameString((UIView *)self),
+        FrameString((UIView *)self),
+        (unsigned long)self.subviews.count
     );
 
-    SensorProbeLog(
-        @"[LAYOUT] self=%p AFTER frame=%@ bounds=%@",
-        self,
-        SafeFrameString(self),
-        SafeBoundsString(self)
-    );
+    if (!CGRectEqualToRect(before, after)) {
 
-    if (!CGRectEqualToRect(beforeFrame, self.frame) ||
-        !CGRectEqualToRect(beforeBounds, self.bounds)) {
-
-        SensorProbeLog(
-            @"[LAYOUT-CHANGE] self=%p changed during layout",
-            self
+        ProbeLog(
+            @"[HEADER-LAYOUT-CHANGE] header frame changed"
         );
     }
+
+    DumpHeaderSubviews(self);
 }
 
 
-/*
- * ============================================================
- * setFrame:
- * ============================================================
- */
+- (void)addSubview:(UIView *)view {
 
-- (void)setFrame:(CGRect)frame {
-
-    SensorProbeLog(
-        @"[FRAME] self=%p old=%@ new={{%.1f, %.1f}, {%.1f, %.1f}}",
+    ProbeLog(
+        @"[HEADER-ADD-SUBVIEW] header=%p adding class=%@ frame=%@",
         self,
-        SafeFrameString(self),
-        frame.origin.x,
-        frame.origin.y,
-        frame.size.width,
-        frame.size.height
+        ClassName(view),
+        FrameString(view)
     );
 
     %orig;
 }
 
 
-/*
- * ============================================================
- * setBounds:
- * ============================================================
- */
+- (void)insertSubview:(UIView *)view
+              atIndex:(NSInteger)index {
 
-- (void)setBounds:(CGRect)bounds {
-
-    SensorProbeLog(
-        @"[BOUNDS] self=%p old=%@ new={{%.1f, %.1f}, {%.1f, %.1f}}",
+    ProbeLog(
+        @"[HEADER-INSERT] header=%p class=%@ index=%ld",
         self,
-        SafeBoundsString(self),
-        bounds.origin.x,
-        bounds.origin.y,
-        bounds.size.width,
-        bounds.size.height
+        ClassName(view),
+        (long)index
     );
 
     %orig;
 }
 
 
-/*
- * ============================================================
- * setHidden:
- * ============================================================
- */
+- (void)willRemoveSubview:(UIView *)subview {
 
-- (void)setHidden:(BOOL)hidden {
-
-    SensorProbeLog(
-        @"[HIDDEN] self=%p old=%d new=%d",
+    ProbeLog(
+        @"[HEADER-REMOVE] header=%p removing class=%@",
         self,
-        self.hidden,
-        hidden
-    );
-
-    %orig;
-}
-
-
-/*
- * ============================================================
- * setAlpha:
- * ============================================================
- */
-
-- (void)setAlpha:(CGFloat)alpha {
-
-    SensorProbeLog(
-        @"[ALPHA] self=%p old=%.2f new=%.2f",
-        self,
-        self.alpha,
-        alpha
-    );
-
-    %orig;
-}
-
-
-/*
- * ============================================================
- * setUserInteractionEnabled:
- * ============================================================
- */
-
-- (void)setUserInteractionEnabled:(BOOL)enabled {
-
-    SensorProbeLog(
-        @"[INTERACTION] self=%p old=%d new=%d",
-        self,
-        self.userInteractionEnabled,
-        enabled
-    );
-
-    %orig;
-}
-
-
-/*
- * ============================================================
- * touches
- * ============================================================
- */
-
-- (void)touchesBegan:(NSSet *)touches
-           withEvent:(UIEvent *)event {
-
-    SensorProbeLog(
-        @"[TOUCH] touchesBegan self=%p",
-        self
-    );
-
-    %orig;
-}
-
-
-- (void)touchesEnded:(NSSet *)touches
-           withEvent:(UIEvent *)event {
-
-    SensorProbeLog(
-        @"[TOUCH] touchesEnded self=%p",
-        self
+        ClassName(subview)
     );
 
     %orig;
@@ -374,8 +381,8 @@ static void DumpSensorHierarchy(UIView *view) {
 
 %ctor {
 
-    SensorProbeLog(@"");
-    SensorProbeLog(@"========================================");
-    SensorProbeLog(@"HideAVSensorProbe START");
-    SensorProbeLog(@"========================================");
+    ProbeLog(@"");
+    ProbeLog(@"========================================");
+    ProbeLog(@"HideAVSensorProbe v2 START");
+    ProbeLog(@"========================================");
 }
