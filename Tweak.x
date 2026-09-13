@@ -85,15 +85,21 @@ static NSArray *FilterRPCCModules(NSArray *original) {
 - (void)didMoveToWindow {
     %orig;
     self.hidden = YES;
+    self.userInteractionEnabled = YES;
 }
 
 - (void)layoutSubviews {
     %orig;
     self.hidden = YES;
+    self.userInteractionEnabled = YES;
 }
 
 - (void)setHidden:(BOOL)hidden {
     %orig(YES);
+}
+
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
+    return NO;
 }
 
 %end
