@@ -93,12 +93,4 @@ static NSArray *FilterRPCCModules(NSArray *original) {
     self.userInteractionEnabled = NO;
 }
 
-- (void)setHidden:(BOOL)hidden {
-    %orig(YES);
-}
-
-- (void)setUserInteractionEnabled:(BOOL)enabled {
-    %orig(NO);
-}
-
 %end
