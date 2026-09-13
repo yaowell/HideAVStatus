@@ -3,201 +3,168 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
-static NSString * const kLogPath = @"/var/mobile/Documents/HideAVSensorProbe.log";
 
-static void HSPLog(NSString *format, ...) {
-    @autoreleasepool {
-        va_list args;
-        va_start(args, format);
+#pragma mark - ReplayKit Module Filter
 
-        NSString *msg = [[NSString alloc] initWithFormat:format arguments:args];
+static BOOL IsRPCCModule(id instance) {
+    if (!instance)
+        return NO;
 
-        va_end(args);
-
-        NSString *line =
-            [NSString stringWithFormat:@"%@ %@\n",
-             [NSDate date], msg];
-
-        NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
-
-        NSFileHandle *fh =
-            [NSFileHandle fileHandleForWritingAtPath:kLogPath];
-
-        if (!fh) {
-            [[NSFileManager defaultManager]
-                createFileAtPath:kLogPath
-                contents:nil
-                attributes:nil];
-
-            fh =
-                [NSFileHandle fileHandleForWritingAtPath:kLogPath];
-        }
-
-        if (fh) {
-            [fh seekToEndOfFile];
-            [fh writeData:data];
-            [fh closeFile];
-        }
-    }
-}
-
-static NSString *HSPFrame(UIView *view) {
-    if (!view)
-        return @"<nil>";
-
-    CGRect f = view.frame;
-
-    return [NSString stringWithFormat:
-            @"{{%.1f,%.1f},{%.1f,%.1f}}",
-            f.origin.x,
-            f.origin.y,
-            f.size.width,
-            f.size.height];
-}
-
-static void HSPDumpHeader(id selfObj, NSString *tag) {
     @try {
-        UIView *header = (UIView *)selfObj;
-
-        HSPLog(
-            @"[%@] HEADER frame=%@ hidden=%d alpha=%.2f interaction=%d subviews=%lu",
-            tag,
-            HSPFrame(header),
-            header.hidden,
-            header.alpha,
-            header.userInteractionEnabled,
-            (unsigned long)header.subviews.count
+        id module = ((id (*)(id, SEL))objc_msgSend)(
+            instance,
+            sel_registerName("module")
         );
 
-        for (NSUInteger i = 0;
-             i < header.subviews.count;
-             i++) {
+        if (!module)
+            return NO;
 
-            UIView *v = header.subviews[i];
+        NSString *name = NSStringFromClass([module class]);
 
-            HSPLog(
-                @"[%@]   subview[%lu] class=%@ frame=%@ hidden=%d alpha=%.2f interaction=%d",
-                tag,
-                (unsigned long)i,
-                NSStringFromClass([v class]),
-                HSPFrame(v),
-                v.hidden,
-                v.alpha,
-                v.userInteractionEnabled
-            );
+        return [name isEqualToString:@"RPCCAudioSettingsModule"] ||
+               [name isEqualToString:@"RPCCVideoSettingsModule"] ||
+               [name isEqualToString:@"RPVideoEffectsModule"];
+    }
+    @catch (NSException *exception) {
+        return NO;
+    }
+}
+
+
+static NSArray *FilterRPCCModules(NSArray *modules) {
+    if (!modules || modules.count == 0)
+        return modules;
+
+    NSMutableArray *result =
+        [NSMutableArray arrayWithCapacity:modules.count];
+
+    for (id instance in modules) {
+        if (!IsRPCCModule(instance)) {
+            [result addObject:instance];
         }
     }
-    @catch (NSException *e) {
-        HSPLog(
-            @"[DUMP-EXCEPTION] %@",
-            e.reason ?: @"unknown"
-        );
-    }
-}
-
-
-%hook CCUIHeaderPocketView
-
-
-- (void)handleCompactControlTouchBeganEvent {
-    HSPLog(
-        @"[CALL] handleCompactControlTouchBeganEvent"
-    );
-
-    HSPDumpHeader(self, @"TOUCH-BEGIN");
-
-    %orig;
-
-    HSPLog(
-        @"[RETURN] handleCompactControlTouchBeganEvent"
-    );
-}
-
-
-- (void)handleCompactControlExpansionEvent {
-    HSPLog(
-        @"[CALL] handleCompactControlExpansionEvent"
-    );
-
-    HSPDumpHeader(self, @"EXPANSION-BEFORE");
-
-    %orig;
-
-    HSPDumpHeader(self, @"EXPANSION-AFTER");
-
-    HSPLog(
-        @"[RETURN] handleCompactControlExpansionEvent"
-    );
-}
-
-
-- (void)handleCompactControlCompactionEvent {
-    HSPLog(
-        @"[CALL] handleCompactControlCompactionEvent"
-    );
-
-    HSPDumpHeader(self, @"COMPACTION-BEFORE");
-
-    %orig;
-
-    HSPDumpHeader(self, @"COMPACTION-AFTER");
-
-    HSPLog(
-        @"[RETURN] handleCompactControlCompactionEvent"
-    );
-}
-
-
-- (void)willOpenExpandedSensorAttributionViewController {
-    HSPLog(
-        @"[CALL] willOpenExpandedSensorAttributionViewController"
-    );
-
-    HSPDumpHeader(self, @"WILL-OPEN");
-
-    %orig;
-
-    HSPLog(
-        @"[RETURN] willOpenExpandedSensorAttributionViewController"
-    );
-}
-
-
-- (void)didCloseExpandedSensorAttributionViewController {
-    HSPLog(
-        @"[CALL] didCloseExpandedSensorAttributionViewController"
-    );
-
-    HSPDumpHeader(self, @"DID-CLOSE");
-
-    %orig;
-
-    HSPLog(
-        @"[RETURN] didCloseExpandedSensorAttributionViewController"
-    );
-}
-
-
-- (BOOL)isSensorAttributionViewControllerExpanded {
-    BOOL result = %orig;
-
-    HSPLog(
-        @"[CALL] isSensorAttributionViewControllerExpanded -> %d",
-        result
-    );
 
     return result;
 }
 
 
+#pragma mark - CCUIModuleInstanceManager
+
+%hook CCUIModuleInstanceManager
+
+- (NSArray *)moduleInstances {
+    NSArray *result = %orig;
+    return FilterRPCCModules(result);
+}
+
+- (NSArray *)enabledModuleInstances {
+    NSArray *result = %orig;
+    return FilterRPCCModules(result);
+}
+
 %end
 
 
-%ctor {
-    @autoreleasepool {
-        HSPLog(@"");
-        HSPLog(@"========== HideAVSensorProbe START ==========");
-        HSPLog(@"PID=%d", getpid());
-        HSPLog(@"========== Waiting for CCUIHeaderPocketView ==========");
+#pragma mark - CCUIModuleInstance
+
+%hook CCUIModuleInstance
+
+- (CGSize)prototypeModuleSize {
+    @try {
+        id module = ((id (*)(id, SEL))objc_msgSend)(
+            self,
+            sel_registerName("module")
+        );
+
+        if (module) {
+            NSString *name =
+                NSStringFromClass([module class]);
+
+            if ([name isEqualToString:@"RPCCAudioSettingsModule"] ||
+                [name isEqualToString:@"RPCCVideoSettingsModule"] ||
+                [name isEqualToString:@"RPVideoEffectsModule"]) {
+
+                return CGSizeZero;
+            }
+        }
     }
+    @catch (NSException *exception) {
+    }
+
+    return %orig;
 }
+
+%end
+
+
+#pragma mark - Sensor Attribution Compact Control
+
+@interface CCUISensorAttributionCompactControl : UIView
+@end
+
+
+%hook CCUISensorAttributionCompactControl
+
+- (void)didMoveToWindow {
+    %orig;
+
+    /*
+     * 只隐藏视觉显示。
+     * 保留 userInteractionEnabled，
+     * 不改变 frame / size / layout。
+     */
+    self.hidden = YES;
+}
+
+- (void)layoutSubviews {
+    %orig;
+
+    /*
+     * 系统可能在 layout 时重新设置 hidden，
+     * 因此这里继续保持隐藏。
+     */
+    self.hidden = YES;
+}
+
+- (void)setHidden:(BOOL)hidden {
+    /*
+     * 无论系统要求显示还是隐藏，
+     * 最终都保持隐藏。
+     */
+    %orig(YES);
+}
+
+%end
+
+
+#pragma mark - CCUIHeaderPocketView
+
+%hook CCUIHeaderPocketView
+
+- (void)handleCompactControlExpansionEvent {
+    /*
+     * 关键处理：
+     *
+     * 原始流程：
+     * handleCompactControlTouchBeganEvent
+     *      ↓
+     * willOpenExpandedSensorAttributionViewController
+     *      ↓
+     * handleCompactControlExpansionEvent
+     *      ↓
+     * 展开二级菜单
+     *
+     * 这里不调用 %orig，
+     * 从而阻止 Sensor Attribution 二级菜单展开。
+     *
+     * 不修改：
+     * Header frame
+     * Sensor frame
+     * userInteractionEnabled
+     * CCUIStatusBar
+     * Control Center dismiss
+     */
+    return;
+}
+
+%end
