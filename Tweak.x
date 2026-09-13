@@ -1,388 +1,203 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
+#import <objc/message.h>
 
-#pragma mark - Logger
+static NSString * const kLogPath = @"/var/mobile/Documents/HideAVSensorProbe.log";
 
-static void ProbeLog(NSString *format, ...) {
+static void HSPLog(NSString *format, ...) {
     @autoreleasepool {
-
-        NSString *path =
-            @"/var/mobile/Documents/HideAVSensorProbe.log";
-
         va_list args;
         va_start(args, format);
 
-        NSString *message =
-            [[NSString alloc] initWithFormat:format arguments:args];
+        NSString *msg = [[NSString alloc] initWithFormat:format arguments:args];
 
         va_end(args);
 
         NSString *line =
-            [NSString stringWithFormat:@"%@\n", message];
+            [NSString stringWithFormat:@"%@ %@\n",
+             [NSDate date], msg];
 
-        NSFileManager *fm =
-            [NSFileManager defaultManager];
+        NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
 
-        if (![fm fileExistsAtPath:path]) {
-            [fm createFileAtPath:path
-                        contents:nil
-                      attributes:nil];
+        NSFileHandle *fh =
+            [NSFileHandle fileHandleForWritingAtPath:kLogPath];
+
+        if (!fh) {
+            [[NSFileManager defaultManager]
+                createFileAtPath:kLogPath
+                contents:nil
+                attributes:nil];
+
+            fh =
+                [NSFileHandle fileHandleForWritingAtPath:kLogPath];
         }
 
-        NSFileHandle *handle =
-            [NSFileHandle fileHandleForWritingAtPath:path];
-
-        if (!handle) {
-            return;
-        }
-
-        @try {
-            [handle seekToEndOfFile];
-
-            NSData *data =
-                [line dataUsingEncoding:NSUTF8StringEncoding];
-
-            [handle writeData:data];
-
-            [handle closeFile];
-        }
-        @catch (NSException *exception) {
-            @try {
-                [handle closeFile];
-            }
-            @catch (...) {
-            }
+        if (fh) {
+            [fh seekToEndOfFile];
+            [fh writeData:data];
+            [fh closeFile];
         }
     }
 }
 
-
-#pragma mark - Safe Helpers
-
-static NSString *ClassName(id obj) {
-    if (!obj) {
+static NSString *HSPFrame(UIView *view) {
+    if (!view)
         return @"<nil>";
-    }
-
-    return NSStringFromClass([obj class]);
-}
-
-
-static NSString *FrameString(UIView *view) {
-
-    if (!view) {
-        return @"<nil>";
-    }
 
     CGRect f = view.frame;
 
     return [NSString stringWithFormat:
-            @"{{%.1f, %.1f}, {%.1f, %.1f}}",
+            @"{{%.1f,%.1f},{%.1f,%.1f}}",
             f.origin.x,
             f.origin.y,
             f.size.width,
             f.size.height];
 }
 
+static void HSPDumpHeader(id selfObj, NSString *tag) {
+    @try {
+        UIView *header = (UIView *)selfObj;
 
-#pragma mark - Dump Header Subviews
-
-static void DumpHeaderSubviews(UIView *header) {
-
-    if (!header) {
-        return;
-    }
-
-    ProbeLog(@"");
-    ProbeLog(@"========== HEADER SUBVIEWS ==========");
-
-    NSArray *subviews = header.subviews;
-
-    ProbeLog(
-        @"[HEADER] class=%@ count=%lu frame=%@",
-        ClassName(header),
-        (unsigned long)subviews.count,
-        FrameString(header)
-    );
-
-    NSUInteger index = 0;
-
-    for (UIView *view in subviews) {
-
-        ProbeLog(
-            @"[HEADER-SUBVIEW] index=%lu class=%@ frame=%@ hidden=%d alpha=%.2f interaction=%d",
-            (unsigned long)index,
-            ClassName(view),
-            FrameString(view),
-            view.hidden,
-            view.alpha,
-            view.userInteractionEnabled
+        HSPLog(
+            @"[%@] HEADER frame=%@ hidden=%d alpha=%.2f interaction=%d subviews=%lu",
+            tag,
+            HSPFrame(header),
+            header.hidden,
+            header.alpha,
+            header.userInteractionEnabled,
+            (unsigned long)header.subviews.count
         );
 
-        index++;
-    }
+        for (NSUInteger i = 0;
+             i < header.subviews.count;
+             i++) {
 
-    ProbeLog(@"========== END HEADER SUBVIEWS ==========");
-}
+            UIView *v = header.subviews[i];
 
-
-#pragma mark - Method Name Scanner
-
-static void DumpInterestingMethods(Class cls) {
-
-    if (!cls) {
-        return;
-    }
-
-    ProbeLog(@"");
-    ProbeLog(@"========== METHODS %@ ==========",
-             NSStringFromClass(cls));
-
-    unsigned int count = 0;
-
-    Method *methods =
-        class_copyMethodList(cls, &count);
-
-    if (!methods) {
-        ProbeLog(@"[METHODS] no methods");
-        return;
-    }
-
-    for (unsigned int i = 0; i < count; i++) {
-
-        SEL selector =
-            method_getName(methods[i]);
-
-        if (!selector) {
-            continue;
-        }
-
-        NSString *name =
-            NSStringFromSelector(selector);
-
-        NSString *lower =
-            [name lowercaseString];
-
-        BOOL interesting =
-            [lower containsString:@"sensor"] ||
-            [lower containsString:@"attribution"] ||
-            [lower containsString:@"compact"] ||
-            [lower containsString:@"expand"] ||
-            [lower containsString:@"header"] ||
-            [lower containsString:@"pocket"] ||
-            [lower containsString:@"camera"] ||
-            [lower containsString:@"microphone"];
-
-        if (interesting) {
-
-            ProbeLog(
-                @"[METHOD] %@",
-                name
+            HSPLog(
+                @"[%@]   subview[%lu] class=%@ frame=%@ hidden=%d alpha=%.2f interaction=%d",
+                tag,
+                (unsigned long)i,
+                NSStringFromClass([v class]),
+                HSPFrame(v),
+                v.hidden,
+                v.alpha,
+                v.userInteractionEnabled
             );
         }
     }
-
-    free(methods);
-
-    ProbeLog(@"========== END METHODS ==========");
-}
-
-
-#pragma mark - Sensor Control
-
-@interface CCUISensorAttributionCompactControl : UIView
-@end
-
-
-%hook CCUISensorAttributionCompactControl
-
-
-- (instancetype)initWithFrame:(CGRect)frame {
-
-    ProbeLog(
-        @"[SENSOR-CREATE] initWithFrame self=%p frame=%@",
-        self,
-        FrameString((UIView *)self)
-    );
-
-    id result = %orig;
-
-    ProbeLog(
-        @"[SENSOR-CREATE] result=%p class=%@ frame=%@",
-        result,
-        ClassName(result),
-        FrameString((UIView *)result)
-    );
-
-    return result;
-}
-
-
-- (void)didMoveToWindow {
-
-    %orig;
-
-    ProbeLog(
-        @"[SENSOR-WINDOW] self=%p window=%@ super=%@ frame=%@",
-        self,
-        ClassName(self.window),
-        ClassName(self.superview),
-        FrameString(self)
-    );
-
-    if (self.superview) {
-        DumpHeaderSubviews(self.superview);
+    @catch (NSException *e) {
+        HSPLog(
+            @"[DUMP-EXCEPTION] %@",
+            e.reason ?: @"unknown"
+        );
     }
 }
-
-
-- (void)layoutSubviews {
-
-    %orig;
-
-    if (self.superview) {
-        DumpHeaderSubviews(self.superview);
-    }
-}
-
-%end
-
-
-#pragma mark - Header Pocket
-
-@interface CCUIHeaderPocketView : UIView
-@end
 
 
 %hook CCUIHeaderPocketView
 
 
-- (instancetype)initWithFrame:(CGRect)frame {
-
-    ProbeLog(
-        @"[HEADER-CREATE] initWithFrame frame=%@",
-        FrameString((UIView *)self)
+- (void)handleCompactControlTouchBeganEvent {
+    HSPLog(
+        @"[CALL] handleCompactControlTouchBeganEvent"
     );
 
-    id result = %orig;
+    HSPDumpHeader(self, @"TOUCH-BEGIN");
 
-    ProbeLog(
-        @"[HEADER-CREATE] result=%p class=%@ frame=%@",
-        result,
-        ClassName(result),
-        FrameString((UIView *)result)
+    %orig;
+
+    HSPLog(
+        @"[RETURN] handleCompactControlTouchBeganEvent"
+    );
+}
+
+
+- (void)handleCompactControlExpansionEvent {
+    HSPLog(
+        @"[CALL] handleCompactControlExpansionEvent"
     );
 
-    /*
-     * 只扫描一次方法。
-     */
-    static BOOL didDumpMethods = NO;
+    HSPDumpHeader(self, @"EXPANSION-BEFORE");
 
-    if (!didDumpMethods) {
+    %orig;
 
-        didDumpMethods = YES;
+    HSPDumpHeader(self, @"EXPANSION-AFTER");
 
-        DumpInterestingMethods(
-            [result class]
-        );
-    }
+    HSPLog(
+        @"[RETURN] handleCompactControlExpansionEvent"
+    );
+}
+
+
+- (void)handleCompactControlCompactionEvent {
+    HSPLog(
+        @"[CALL] handleCompactControlCompactionEvent"
+    );
+
+    HSPDumpHeader(self, @"COMPACTION-BEFORE");
+
+    %orig;
+
+    HSPDumpHeader(self, @"COMPACTION-AFTER");
+
+    HSPLog(
+        @"[RETURN] handleCompactControlCompactionEvent"
+    );
+}
+
+
+- (void)willOpenExpandedSensorAttributionViewController {
+    HSPLog(
+        @"[CALL] willOpenExpandedSensorAttributionViewController"
+    );
+
+    HSPDumpHeader(self, @"WILL-OPEN");
+
+    %orig;
+
+    HSPLog(
+        @"[RETURN] willOpenExpandedSensorAttributionViewController"
+    );
+}
+
+
+- (void)didCloseExpandedSensorAttributionViewController {
+    HSPLog(
+        @"[CALL] didCloseExpandedSensorAttributionViewController"
+    );
+
+    HSPDumpHeader(self, @"DID-CLOSE");
+
+    %orig;
+
+    HSPLog(
+        @"[RETURN] didCloseExpandedSensorAttributionViewController"
+    );
+}
+
+
+- (BOOL)isSensorAttributionViewControllerExpanded {
+    BOOL result = %orig;
+
+    HSPLog(
+        @"[CALL] isSensorAttributionViewControllerExpanded -> %d",
+        result
+    );
 
     return result;
 }
 
 
-- (void)didMoveToWindow {
-
-    %orig;
-
-    ProbeLog(
-        @"[HEADER-WINDOW] self=%p window=%@ frame=%@",
-        self,
-        ClassName(self.window),
-        FrameString(self)
-    );
-
-    DumpHeaderSubviews(self);
-}
-
-
-- (void)layoutSubviews {
-
-    CGRect before =
-        self.frame;
-
-    %orig;
-
-    CGRect after =
-        self.frame;
-
-    ProbeLog(
-        @"[HEADER-LAYOUT] self=%p before=%@ after=%@ subviews=%lu",
-        self,
-        FrameString((UIView *)self),
-        FrameString((UIView *)self),
-        (unsigned long)self.subviews.count
-    );
-
-    if (!CGRectEqualToRect(before, after)) {
-
-        ProbeLog(
-            @"[HEADER-LAYOUT-CHANGE] header frame changed"
-        );
-    }
-
-    DumpHeaderSubviews(self);
-}
-
-
-- (void)addSubview:(UIView *)view {
-
-    ProbeLog(
-        @"[HEADER-ADD-SUBVIEW] header=%p adding class=%@ frame=%@",
-        self,
-        ClassName(view),
-        FrameString(view)
-    );
-
-    %orig;
-}
-
-
-- (void)insertSubview:(UIView *)view
-              atIndex:(NSInteger)index {
-
-    ProbeLog(
-        @"[HEADER-INSERT] header=%p class=%@ index=%ld",
-        self,
-        ClassName(view),
-        (long)index
-    );
-
-    %orig;
-}
-
-
-- (void)willRemoveSubview:(UIView *)subview {
-
-    ProbeLog(
-        @"[HEADER-REMOVE] header=%p removing class=%@",
-        self,
-        ClassName(subview)
-    );
-
-    %orig;
-}
-
 %end
 
 
-#pragma mark - Constructor
-
 %ctor {
-
-    ProbeLog(@"");
-    ProbeLog(@"========================================");
-    ProbeLog(@"HideAVSensorProbe v2 START");
-    ProbeLog(@"========================================");
+    @autoreleasepool {
+        HSPLog(@"");
+        HSPLog(@"========== HideAVSensorProbe START ==========");
+        HSPLog(@"PID=%d", getpid());
+        HSPLog(@"========== Waiting for CCUIHeaderPocketView ==========");
+    }
 }
