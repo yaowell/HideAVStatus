@@ -71,11 +71,6 @@ static NSArray *FilterRPCCModules(NSArray *original) {
 /*
  * ============================================================
  * CCUIModuleInstanceManager
- *
- * Hide:
- *   RPCCAudioSettingsModule
- *   RPCCVideoSettingsModule
- *   RPVideoEffectsModule
  * ============================================================
  */
 
@@ -97,8 +92,6 @@ static NSArray *FilterRPCCModules(NSArray *original) {
 /*
  * ============================================================
  * CCUIModuleInstance
- *
- * Make the RPCC modules occupy zero size.
  * ============================================================
  */
 
@@ -125,15 +118,15 @@ static NSArray *FilterRPCCModules(NSArray *original) {
  * ============================================================
  * CCUISensorAttributionCompactControl
  *
- * New test:
+ * 保持上一版已经验证过的隐藏方式：
  *
- * DO NOT use hidden = YES.
+ * hidden = YES
+ * userInteractionEnabled = NO
  *
- * Keep the view in the layout hierarchy so its original
- * height/space remains intact.
+ * 不使用 alpha
+ * 不使用 pointInside
  *
- * Make it completely transparent and disable its own
- * interaction so it should not open the secondary menu.
+ * 这次只额外处理触摸传递。
  * ============================================================
  */
 
@@ -146,8 +139,7 @@ static NSArray *FilterRPCCModules(NSArray *original) {
 
     %orig;
 
-    self.hidden = NO;
-    self.alpha = 0.0;
+    self.hidden = YES;
     self.userInteractionEnabled = NO;
 }
 
@@ -155,9 +147,31 @@ static NSArray *FilterRPCCModules(NSArray *original) {
 
     %orig;
 
-    self.hidden = NO;
-    self.alpha = 0.0;
+    self.hidden = YES;
     self.userInteractionEnabled = NO;
+}
+
+
+/*
+ * 防止系统重新把控件显示出来。
+ */
+- (void)setHidden:(BOOL)hidden {
+
+    %orig(YES);
+}
+
+
+/*
+ * 保持控件自身不接收触摸。
+ *
+ * 注意：
+ * 这里不再 override pointInside:
+ * 因为上一版测试已经证明 pointInside:NO
+ * 仍然会出现二级菜单。
+ */
+- (void)setUserInteractionEnabled:(BOOL)enabled {
+
+    %orig(NO);
 }
 
 %end
